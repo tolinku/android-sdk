@@ -70,6 +70,11 @@ val javadocJar by tasks.registering(Jar::class) {
 }
 
 afterEvaluate {
+    // Ensure metadata generation declares dependency on artifact tasks
+    tasks.named("generateMetadataFileForReleasePublication") {
+        dependsOn(sourceJar, javadocJar)
+    }
+
     publishing {
         publications {
             create<MavenPublication>("release") {
