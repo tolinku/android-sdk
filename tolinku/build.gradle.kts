@@ -55,26 +55,10 @@ dependencies {
 }
 
 // ---------------------------------------------------------------------------
-// Maven Central publishing
+// Maven publishing (JitPack + Maven Central)
 // ---------------------------------------------------------------------------
 
-// Source JAR task
-val sourceJar by tasks.registering(Jar::class) {
-    archiveClassifier.set("sources")
-    from(android.sourceSets["main"].java.srcDirs)
-}
-
-// Javadoc JAR task (empty; satisfies Maven Central requirement)
-val javadocJar by tasks.registering(Jar::class) {
-    archiveClassifier.set("javadoc")
-}
-
 afterEvaluate {
-    // Ensure metadata generation declares dependency on artifact tasks
-    tasks.matching { it.name == "generateMetadataFileForReleasePublication" }.configureEach {
-        dependsOn(sourceJar, javadocJar)
-    }
-
     publishing {
         publications {
             create<MavenPublication>("release") {
@@ -83,9 +67,6 @@ afterEvaluate {
                 groupId = "com.tolinku"
                 artifactId = "sdk"
                 version = sdkVersion
-
-                artifact(sourceJar)
-                artifact(javadocJar)
 
                 pom {
                     name.set("Tolinku Android SDK")
@@ -101,7 +82,6 @@ afterEvaluate {
 
                     developers {
                         developer {
-                            // Fill in via ~/.gradle/gradle.properties or replace inline
                             id.set(findProperty("pom.developer.id")?.toString() ?: "tolinku")
                             name.set(findProperty("pom.developer.name")?.toString() ?: "Tolinku Team")
                             email.set(findProperty("pom.developer.email")?.toString() ?: "dev@tolinku.com")
@@ -123,9 +103,6 @@ afterEvaluate {
                 url = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
 
                 credentials {
-                    // Set these in ~/.gradle/gradle.properties:
-                    //   ossrhUsername=your-sonatype-username
-                    //   ossrhPassword=your-sonatype-password
                     username = findProperty("ossrhUsername")?.toString() ?: ""
                     password = findProperty("ossrhPassword")?.toString() ?: ""
                 }
