@@ -133,9 +133,10 @@ afterEvaluate {
         }
     }
 
-    signing {
-        // Reads signing.keyId, signing.password, signing.secretKeyRingFile
-        // from ~/.gradle/gradle.properties
-        sign(publishing.publications["release"])
+    // Only sign when credentials are available (skipped on JitPack)
+    if (findProperty("signing.keyId") != null) {
+        signing {
+            sign(publishing.publications["release"])
+        }
     }
 }
