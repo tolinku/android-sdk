@@ -71,7 +71,7 @@ val javadocJar by tasks.registering(Jar::class) {
 
 afterEvaluate {
     // Ensure metadata generation declares dependency on artifact tasks
-    tasks.named("generateMetadataFileForReleasePublication") {
+    tasks.matching { it.name == "generateMetadataFileForReleasePublication" }.configureEach {
         dependsOn(sourceJar, javadocJar)
     }
 
