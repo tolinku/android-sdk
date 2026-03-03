@@ -50,8 +50,18 @@ class Analytics internal constructor(private val client: TolinkuClient) {
     suspend fun track(eventType: String, properties: Map<String, Any>? = null) {
         require(eventType.isNotBlank()) { "eventType must not be blank" }
 
+        var normalizedType = eventType
+        if (!normalizedType.startsWith("custom.")) {
+            normalizedType = "custom.$normalizedType"
+        }
+
+        val eventNamePattern = Regex("^custom\\.[a-z0-9_]+$")
+        require(eventNamePattern.matches(normalizedType)) {
+            "eventType \"$normalizedType\" is invalid. Must match pattern \"custom.[a-z0-9_]+\" (lowercase letters, numbers, and underscores only after \"custom.\")"
+        }
+
         val event = JSONObject().apply {
-            put("event_type", eventType)
+            put("event_type", normalizedType)
             put("properties", if (properties != null) JSONObject(properties) else JSONObject())
         }
 
