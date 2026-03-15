@@ -18,7 +18,7 @@ Add the dependency to your module-level `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.tolinku:sdk:0.1.0")
+    implementation("com.tolinku:sdk:0.2.0")
 }
 ```
 
@@ -94,6 +94,32 @@ val reward = referrals.claimReward(code)
 // Fetch leaderboard
 val entries = referrals.leaderboard(limit = 10)
 ```
+
+### Ecommerce
+
+Track purchases, cart activity, and product events with built-in revenue analytics. Available on paid plans.
+
+```kotlin
+Tolinku.setUserId("user_123")
+
+// Track a product view
+Tolinku.ecommerce.viewItem(
+    items = listOf(TolinkuItem(itemId = "sku_1", itemName = "T-Shirt", price = BigDecimal("24.99")))
+)
+
+// Track a purchase
+Tolinku.ecommerce.purchase(
+    transactionId = "order_456",
+    revenue = BigDecimal("49.99"),
+    currency = "USD",
+    items = listOf(TolinkuItem(itemId = "sku_1", itemName = "T-Shirt", price = BigDecimal("24.99"), quantity = 2))
+)
+
+// Flush ecommerce events
+Tolinku.ecommerce.flush()
+```
+
+The SDK supports 13 event types covering the full shopping journey. Money values use `BigDecimal` for precision. Cart IDs are managed automatically via `SharedPreferences` and cleared after purchase. Events auto-flush when the app enters the background via `ActivityLifecycleCallbacks`.
 
 ### Deferred Deep Links
 
@@ -191,6 +217,25 @@ Tolinku.shutdown()
 | `milestone(code, milestone)` | Update a referral milestone |
 | `claimReward(code)` | Claim a referral reward |
 | `leaderboard(limit?)` | Fetch the referral leaderboard |
+
+### `Tolinku.ecommerce`
+
+| Method | Description |
+|--------|-------------|
+| `viewItem(items)` | Track a product view |
+| `addToCart(items)` | Track item added to cart |
+| `removeFromCart(items)` | Track item removed from cart |
+| `addToWishlist(items)` | Track item added to wishlist |
+| `viewCart()` | Track cart view |
+| `addPaymentInfo()` | Track payment info entered |
+| `beginCheckout()` | Track checkout started |
+| `purchase(transactionId, revenue, currency, items)` | Track a purchase |
+| `refund(transactionId, revenue)` | Track a refund |
+| `search(searchTerm)` | Track a product search |
+| `share(itemId)` | Track a product share |
+| `rate(itemId, rating, maxRating)` | Track a product rating |
+| `spendCredits(revenue, currency)` | Track loyalty credits spent |
+| `flush()` | Send all queued ecommerce events |
 
 ### `Tolinku.deferred`
 

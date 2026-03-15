@@ -53,6 +53,8 @@ object Tolinku {
     @Volatile
     private var _analytics: Analytics? = null
     @Volatile
+    private var _ecommerce: Ecommerce? = null
+    @Volatile
     private var _referrals: Referrals? = null
     @Volatile
     private var _deferred: DeferredDeepLink? = null
@@ -82,6 +84,14 @@ object Tolinku {
     @JvmStatic
     val analytics: Analytics
         get() = _analytics ?: throw TolinkuException("Tolinku SDK not configured. Call Tolinku.configure() first.")
+
+    /**
+     * Access the ecommerce module for tracking purchases, carts, products, and revenue.
+     * @throws TolinkuException if the SDK has not been configured.
+     */
+    @JvmStatic
+    val ecommerce: Ecommerce
+        get() = _ecommerce ?: throw TolinkuException("Tolinku SDK not configured. Call Tolinku.configure() first.")
 
     /**
      * Access the referrals module for managing referral links.
@@ -167,12 +177,9 @@ object Tolinku {
         this.debug = debug
 
         synchronized(lock) {
-            // Shut down the old Analytics instance first (flushes and cancels its scope)
-            _analytics?.let { oldAnalytics ->
-                runBlocking {
-                    oldAnalytics.shutdown()
-                }
-            }
+            // Shut down old instances first (flushes and cancels their scopes)
+            _analytics?.let { runBlocking { it.shutdown() } }
+            _ecommerce?.let { runBlocking { it.shutdown() } }
 
             // Cancel the previous scope and create a fresh one
             scope.cancel()
@@ -187,6 +194,7 @@ object Tolinku {
             val newClient = TolinkuClient(apiKey, baseUrl)
             client = newClient
             _analytics = Analytics(newClient)
+            _ecommerce = Ecommerce(newClient) { _userId }
             _referrals = Referrals(newClient)
             _deferred = DeferredDeepLink(newClient)
             _messages = Messages(newClient)
@@ -204,10 +212,11 @@ object Tolinku {
                     override fun onActivityStopped(activity: Activity) {
                         activityCount--
                         if (activityCount <= 0) {
-                            // App went to background; flush analytics
+                            // App went to background; flush analytics + ecommerce
                             scope.launch {
                                 try {
                                     _analytics?.flush()
+                                    _ecommerce?.flush()
                                 } catch (e: Exception) {
                                     if (Tolinku.debug) {
                                         Log.w(TAG, "Lifecycle flush failed: ${e.message}")
@@ -268,10 +277,15 @@ object Tolinku {
     @JvmStatic
     fun shutdown() {
         synchronized(lock) {
-            // Flush pending analytics events and cancel its scope BEFORE cancelling SDK scope
+            // Flush pending analytics + ecommerce events and cancel scopes BEFORE cancelling SDK scope
             _analytics?.let { analytics ->
                 runBlocking {
                     analytics.shutdown()
+                }
+            }
+            _ecommerce?.let { ecommerce ->
+                runBlocking {
+                    ecommerce.shutdown()
                 }
             }
 
@@ -284,6 +298,7 @@ object Tolinku {
             configuredApiKey = null
             configuredBaseUrl = null
             _analytics = null
+            _ecommerce = null
             _referrals = null
             _deferred = null
             _messages = null
