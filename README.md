@@ -134,12 +134,17 @@ if (link != null) {
     println(link.deepLinkPath) // e.g. "/merchant/xyz"
 }
 
-// Claim by device signal matching
+// Claim by device signal matching. Timezone, language, screen size, pixel ratio and
+// OS version are collected for you.
 val link = deferred.claimBySignals(
-    appspaceId = "your_appspace_id",
+    appspaceId = "64f0a1b2c3d4e5f60718",
     context = this,
 )
 ```
+
+`appspaceId` is your Appspace ID, not your subdomain or slug. Copy it from the dashboard
+under **Integrate** or **Settings**. It looks like `64f0a1b2c3d4e5f60718`.
+
 
 ### In-App Messages
 

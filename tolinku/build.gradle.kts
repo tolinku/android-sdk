@@ -5,7 +5,7 @@ plugins {
     id("signing")
 }
 
-val sdkVersion = "0.2.0"
+val sdkVersion = "0.3.0"
 
 android {
     namespace = "com.tolinku.sdk"
@@ -30,6 +30,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+
+    // android.jar stubs throw "Stub!" by default, which makes plain JVM unit tests
+    // impossible for anything touching framework classes such as DisplayMetrics.
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
         }
     }
 

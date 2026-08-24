@@ -64,9 +64,12 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
         val body = JSONObject().apply {
             put("appspace_id", appspaceId)
             put("timezone", TimeZone.getDefault().id)
-            put("language", Locale.getDefault().language)
+            put("language", Locale.getDefault().toLanguageTag())
             put("screen_width", screenWidth)
             put("screen_height", screenHeight)
+            // Pixel ratio separates devices that report the same dp dimensions.
+            put("device_pixel_ratio", context.resources.displayMetrics.density.toDouble())
+            put("os_version", Build.VERSION.RELEASE ?: "")
         }
 
         return try {
@@ -118,10 +121,20 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
      * API 30+ and falling back to the deprecated DisplayMetrics approach on
      * older devices.
      */
+    /**
+     * Screen size in density-independent pixels.
+     *
+     * These are matched against the landing page's `screen.width` / `screen.height`,
+     * which a browser reports in CSS pixels. On Android a CSS pixel is a dp, not a
+     * physical pixel, so the raw pixel counts reported by WindowMetrics (1080x2340
+     * on a typical device) never came close to the browser's values (412x915) and
+     * both screen signals always failed to score.
+     */
     private fun getScreenDimensions(context: Context): Pair<Int, Int> {
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val density = context.resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
 
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val (widthPx, heightPx) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val metrics: WindowMetrics = windowManager.currentWindowMetrics
             val bounds = metrics.bounds
             Pair(bounds.width(), bounds.height())
@@ -131,5 +144,10 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
             windowManager.defaultDisplay.getMetrics(displayMetrics)
             Pair(displayMetrics.widthPixels, displayMetrics.heightPixels)
         }
+
+        return Pair(
+            Math.round(widthPx / density),
+            Math.round(heightPx / density),
+        )
     }
 }
