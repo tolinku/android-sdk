@@ -18,7 +18,7 @@ Add the dependency to your module-level `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.tolinku:sdk:0.2.0")
+    implementation("com.tolinku:sdk:0.3.0")
 }
 ```
 

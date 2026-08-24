@@ -1,0 +1,55 @@
+name: Publish to Maven Central
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: maven-publish
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail immediately with a readable message rather than after a full build,
+      # since a missing credential otherwise surfaces as an opaque 401 at upload.
+      - name: Check publishing credentials are present
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          missing=""
+          [ -z "$MAVEN_CENTRAL_USERNAME" ] && missing="$missing MAVEN_CENTRAL_USERNAME"
+          [ -z "$MAVEN_CENTRAL_PASSWORD" ] && missing="$missing MAVEN_CENTRAL_PASSWORD"
+          [ -z "$SIGNING_KEY" ] && missing="$missing SIGNING_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo "MAVEN_CENTRAL_USERNAME and MAVEN_CENTRAL_PASSWORD are a Central Portal"
+            echo "user token, generated under Account on central.sonatype.com. They are"
+            echo "not the account login. SIGNING_KEY is an ASCII-armoured GPG private key"
+            echo "whose public half has been published to a keyserver."
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: ./gradlew :tolinku:testDebugUnitTest
+
+      - name: Publish
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew :tolinku:publishReleasePublicationToMavenCentralRepository --no-daemon
+
+      - name: Next step
+        run: |
+          echo "Uploaded to the Central Portal staging area."
+          echo "Go to central.sonatype.com -> Publish, then release the deployment."

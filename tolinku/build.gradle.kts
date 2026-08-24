@@ -41,6 +41,15 @@ android {
         }
     }
 
+    // Maven Central rejects a publication that has no sources or javadoc jar,
+    // so the release variant has to produce both.
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -108,18 +117,33 @@ afterEvaluate {
         repositories {
             maven {
                 name = "MavenCentral"
-                url = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
+                // The old OSSRH host (s01.oss.sonatype.org) was retired in 2025 and
+                // now answers 402, so nothing published through it could ever have
+                // reached Maven Central. This is the Central Portal's compatibility
+                // endpoint, which accepts the same upload and routes it onward.
+                url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
 
                 credentials {
-                    username = findProperty("ossrhUsername")?.toString() ?: ""
-                    password = findProperty("ossrhPassword")?.toString() ?: ""
+                    // Central Portal user token, generated under Account on
+                    // central.sonatype.com. Not the account login.
+                    username = (findProperty("centralUsername") ?: findProperty("ossrhUsername") ?: System.getenv("MAVEN_CENTRAL_USERNAME") ?: "").toString()
+                    password = (findProperty("centralPassword") ?: findProperty("ossrhPassword") ?: System.getenv("MAVEN_CENTRAL_PASSWORD") ?: "").toString()
                 }
             }
         }
     }
 
-    // Only sign when credentials are available (skipped on JitPack)
-    if (findProperty("signing.keyId") != null) {
+    // Sign only when a key is available, so a local build and JitPack, which have
+    // no key, still work. Maven Central requires signatures; nothing else does.
+    val signingKey = (findProperty("signingKey") ?: System.getenv("SIGNING_KEY"))?.toString()
+    val signingPassword = (findProperty("signingPassword") ?: System.getenv("SIGNING_PASSWORD"))?.toString()
+    if (!signingKey.isNullOrBlank()) {
+        signing {
+            // In-memory rather than a keyring on disk, so CI can hold the key in a secret.
+            useInMemoryPgpKeys(signingKey, signingPassword ?: "")
+            sign(publishing.publications["release"])
+        }
+    } else if (findProperty("signing.keyId") != null) {
         signing {
             sign(publishing.publications["release"])
         }
