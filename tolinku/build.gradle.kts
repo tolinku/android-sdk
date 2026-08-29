@@ -62,6 +62,10 @@ android {
 
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Play Install Referrer: the deterministic half of deferred linking on
+    // Android. Without it a deferred install can only be matched on device
+    // signals, which is probabilistic and expires in hours rather than days.
+    implementation("com.android.installreferrer:installreferrer:2.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     testImplementation("junit:junit:4.13.2")

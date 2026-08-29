@@ -81,6 +81,39 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
         }
     }
 
+    /**
+     * Recover the link that led to this install, trying both mechanisms.
+     *
+     * The Play Install Referrer is asked first: it names the exact click, lasts
+     * for days, and does not care which network the device was on. Device
+     * signals are the fallback for installs the referrer cannot reach, such as
+     * a sideload, a store other than Play, or a device where Play Services is
+     * unavailable.
+     *
+     * Call once on first launch. It is safe to call again, but a claim is
+     * consumed the first time it succeeds, so a second call returns null.
+     *
+     * @param appspaceId The Appspace ID, not the slug or subdomain.
+     * @param context Used for the referrer connection and screen metrics.
+     * @return The claimed [DeferredLink], or null when nothing was waiting.
+     */
+    suspend fun claimDeferredLink(appspaceId: String, context: Context): DeferredLink? {
+        require(appspaceId.isNotBlank()) { "appspaceId must not be blank" }
+
+        InstallReferrer.fetchToken(context)?.let { token ->
+            val byToken = try {
+                claimByToken(token)
+            } catch (e: TolinkuException) {
+                // A referrer that cannot be claimed is worth one fallback rather
+                // than a thrown error: the install still happened.
+                null
+            }
+            if (byToken != null) return byToken
+        }
+
+        return claimBySignals(appspaceId, context)
+    }
+
     // -----------------------------------------------------------------------
     // Java-friendly callback wrappers
     // -----------------------------------------------------------------------
@@ -95,6 +128,27 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
         Tolinku.scope.launch {
             val result = runCatching { claimByToken(token) }
             callback.onResult(result)
+        }
+    }
+
+    /**
+     * Java-friendly callback wrapper for [claimDeferredLink].
+     *
+     * @param appspaceId The Appspace ID, not the slug or subdomain.
+     * @param context Used for the referrer connection and screen metrics.
+     * @param callback Invoked with a [Result] when the operation completes.
+     */
+    fun claimDeferredLinkAsync(
+        appspaceId: String,
+        context: Context,
+        callback: TolinkuCallback<DeferredLink?>,
+    ) {
+        Tolinku.scope.launch {
+            try {
+                callback.onResult(Result.success(claimDeferredLink(appspaceId, context)))
+            } catch (e: Exception) {
+                callback.onResult(Result.failure(e))
+            }
         }
     }
 
