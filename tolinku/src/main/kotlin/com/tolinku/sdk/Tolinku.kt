@@ -271,8 +271,23 @@ object Tolinku {
         get() = client != null
 
     /**
+     * Tear down the SDK and release resources.
+     *
+     * After calling this, you must call [configure] again before using the SDK.
+     *
+     * The name the other Tolinku SDKs use for this. [shutdown] does the same
+     * thing and still works; it is what this SDK shipped and breaking it would
+     * serve nobody. It is meant for deprecation later, once moving off it is a
+     * one-line change rather than a surprise.
+     */
+    @JvmStatic
+    fun destroy() = shutdown()
+
+    /**
      * Shut down the SDK and release resources.
      * After calling this, you must call [configure] again before using the SDK.
+     *
+     * Prefer [destroy], which is the name every Tolinku SDK uses.
      */
     @JvmStatic
     fun shutdown() {

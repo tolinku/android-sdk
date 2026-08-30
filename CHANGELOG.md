@@ -4,6 +4,13 @@
 
 ### Added
 
+- `destroy()` tears the SDK down. The name every Tolinku SDK uses for this.
+  `shutdown()` does the same thing and still works; it is what this SDK shipped
+  and breaking it would serve nobody. It is meant for deprecation later, once
+  moving off it is a one-line change rather than a surprise.
+
+### Added
+
 - `claimDeferredLink()` recovers the link that led to an install, asking the Play
   Install Referrer first and falling back to device signal matching. Call it once
   on first launch instead of choosing between `claimByToken` and `claimBySignals`
