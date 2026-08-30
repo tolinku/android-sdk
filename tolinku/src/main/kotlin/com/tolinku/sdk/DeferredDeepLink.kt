@@ -27,13 +27,21 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
      * @throws IllegalArgumentException if token is blank.
      * @throws TolinkuException if the request fails for reasons other than "not found".
      */
-    suspend fun claimByToken(token: String): DeferredLink? {
+    @JvmOverloads
+    suspend fun claimByToken(token: String, appspaceId: String? = null): DeferredLink? {
         require(token.isNotBlank()) { "token must not be blank" }
 
         return try {
+            // appspaceId narrows what the token may claim, never widens it, and
+            // it is what lets a failed claim be attributed: the default host
+            // resolves to no Appspace, so without it a miss belongs to nobody
+            // and goes uncounted.
             val response = client.getPublic(
                 "/v1/api/deferred/claim",
-                queryParams = mapOf("token" to token)
+                queryParams = buildMap {
+                    put("token", token)
+                    if (!appspaceId.isNullOrBlank()) put("appspace_id", appspaceId)
+                }
             )
             DeferredLink.fromJson(response)
         } catch (e: TolinkuException) {
@@ -111,7 +119,7 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
 
         InstallReferrer.fetchToken(context)?.let { token ->
             val byToken = try {
-                claimByToken(token)
+                claimByToken(token, appspaceId)
             } catch (e: TolinkuException) {
                 // A referrer that cannot be claimed is worth one fallback rather
                 // than a thrown error: the install still happened.
