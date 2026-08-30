@@ -13,6 +13,11 @@
   and nothing read it back, which left every install matched only by device
   signals: probabilistic, and expiring two hours after the click.
 
+- `claimDeferredLink()` runs once per install and remembers it, so calling it on
+  every launch costs nothing after the first. Only a real answer is remembered:
+  a dropped request leaves the next launch free to try again rather than
+  spending the install's one chance at attribution on a bad connection.
+
 ### Fixed
 
 - A literal `+` in the Play referrer is no longer read as a space. Java's

@@ -97,8 +97,17 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
      * @param context Used for the referrer connection and screen metrics.
      * @return The claimed [DeferredLink], or null when nothing was waiting.
      */
-    suspend fun claimDeferredLink(appspaceId: String, context: Context): DeferredLink? {
+    suspend fun claimDeferredLink(
+        appspaceId: String,
+        context: Context,
+        force: Boolean = false,
+    ): DeferredLink? {
         require(appspaceId.isNotBlank()) { "appspaceId must not be blank" }
+
+        // Claiming is a first-launch action, but nothing stops an app calling
+        // this on every launch. Each repeat costs a request and records a miss,
+        // so a healthy integration would report a match rate near zero.
+        if (!force && alreadyAttempted(context)) return null
 
         InstallReferrer.fetchToken(context)?.let { token ->
             val byToken = try {
@@ -108,10 +117,39 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
                 // than a thrown error: the install still happened.
                 null
             }
-            if (byToken != null) return byToken
+            if (byToken != null) {
+                rememberAttempt(context)
+                return byToken
+            }
         }
 
-        return claimBySignals(appspaceId, context)
+        // claimBySignals returns null only for a 404, a real "nothing waiting",
+        // and throws for anything else. So reaching this line means the server
+        // answered, and only an answer is worth remembering: recording a
+        // dropped request would spend the install's one chance at attribution
+        // on a bad connection.
+        val bySignals = claimBySignals(appspaceId, context)
+        rememberAttempt(context)
+        return bySignals
+    }
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(CLAIM_PREFS, Context.MODE_PRIVATE)
+
+    private fun alreadyAttempted(context: Context): Boolean =
+        try {
+            prefs(context).contains(CLAIMED_KEY)
+        } catch (e: Throwable) {
+            // Storage unavailable: attempt the claim rather than skip it.
+            false
+        }
+
+    private fun rememberAttempt(context: Context) {
+        try {
+            prefs(context).edit().putLong(CLAIMED_KEY, System.currentTimeMillis()).apply()
+        } catch (e: Throwable) {
+            // Not worth failing a claim that already succeeded.
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -138,14 +176,16 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
      * @param context Used for the referrer connection and screen metrics.
      * @param callback Invoked with a [Result] when the operation completes.
      */
+    @JvmOverloads
     fun claimDeferredLinkAsync(
         appspaceId: String,
         context: Context,
         callback: TolinkuCallback<DeferredLink?>,
+        force: Boolean = false,
     ) {
         Tolinku.scope.launch {
             try {
-                callback.onResult(Result.success(claimDeferredLink(appspaceId, context)))
+                callback.onResult(Result.success(claimDeferredLink(appspaceId, context, force)))
             } catch (e: Exception) {
                 callback.onResult(Result.failure(e))
             }
@@ -184,6 +224,11 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
      * on a typical device) never came close to the browser's values (412x915) and
      * both screen signals always failed to score.
      */
+    private companion object {
+        const val CLAIM_PREFS = "tolinku_deferred"
+        const val CLAIMED_KEY = "claim_attempted_at"
+    }
+
     private fun getScreenDimensions(context: Context): Pair<Int, Int> {
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val density = context.resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
