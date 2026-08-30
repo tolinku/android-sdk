@@ -36,7 +36,13 @@ internal object InstallReferrer {
         if (referrer.isNullOrBlank()) return null
 
         val decoded = try {
-            URLDecoder.decode(referrer, "UTF-8")
+            // URLDecoder implements form encoding, where "+" means a space.
+            // Percent escapes are what we want here; a literal "+" has to
+            // survive, so it is escaped before decoding. Tokens are base64url
+            // today and contain no "+", which makes this defensive rather than
+            // a live fix, but the alternative is a divergence that would break
+            // Android alone and silently if that ever changed.
+            URLDecoder.decode(referrer.replace("+", "%2B"), "UTF-8")
         } catch (e: Exception) {
             referrer
         }

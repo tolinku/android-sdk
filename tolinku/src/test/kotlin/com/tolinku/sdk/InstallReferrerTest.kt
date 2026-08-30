@@ -59,6 +59,14 @@ class InstallReferrerTest {
     }
 
     @Test
+    fun `keeps a literal plus, matching the other SDKs`() {
+        // Java's URLDecoder reads "+" as a space; decodeURIComponent and
+        // Uri.decodeComponent do not. A token is base64url today so this cannot
+        // bite yet, but the three parsers have to agree or Android breaks alone.
+        assertEquals("a+b", InstallReferrer.parseToken("tolk_token=a+b"))
+    }
+
+    @Test
     fun `tolerates whitespace between pairs`() {
         assertEquals("ABC123", InstallReferrer.parseToken("utm_source=x& tolk_token=ABC123"))
     }
