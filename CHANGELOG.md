@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+
+- `claimDeferredLink()` recovers the link that led to an install, asking the Play
+  Install Referrer first and falling back to device signal matching. Call it once
+  on first launch instead of choosing between `claimByToken` and `claimBySignals`
+  yourself.
+- The Play Install Referrer is read by this package directly, so nothing extra
+  needs installing. Android links already carried a referrer token to the store
+  and nothing read it back, which left every install matched only by device
+  signals: probabilistic, and expiring two hours after the click.
+
+### Fixed
+
+- A literal `+` in the Play referrer is no longer read as a space. Java's
+  `URLDecoder` implements form encoding where the other SDKs' decoders do not,
+  so the same referrer parsed differently on Android alone.
+
 ## 0.3.0
 
 ### Fixed
