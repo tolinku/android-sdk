@@ -313,8 +313,11 @@ object TolinkuMessagePresenter {
                     action.startsWith("navigate:") -> {
                         val url = action.removePrefix("navigate:")
 
-                        // Validate URL scheme to prevent dangerous URIs (file://, content://, javascript:, etc.)
-                        val isValidUrl = url.startsWith("http://") || url.startsWith("https://")
+                        // Only http and https: every other scheme is a way of doing
+                        // something other than opening a web page. Shared with the
+                        // rest of the SDK so the rule is one rule, and parsed rather
+                        // than prefix matched, which used to refuse HTTPS in capitals.
+                        val isValidUrl = isSafeUrl(url)
                         if (!isValidUrl) {
                             if (Tolinku.debug) {
                                 Log.w(Tolinku.TAG, "Blocked invalid URL scheme in navigate action: $url")
