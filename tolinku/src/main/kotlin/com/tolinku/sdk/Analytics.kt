@@ -101,7 +101,10 @@ class Analytics internal constructor(private val client: TolinkuClient) {
         lastOpenAt = now
 
         try {
-            val body = JSONObject().put("url", trimmed)
+            // The User-Agent names the SDK, not the platform, and the Flutter
+            // and React Native SDKs are the same on both. Without this an app
+            // open lands in a blank bucket on every breakdown.
+            val body = JSONObject().put("url", trimmed).put("platform", "android")
             if (!userId.isNullOrBlank()) body.put("user_id", userId)
             val reply = client.postPublic("/v1/api/opens", body)
             // Remembering a no means the setting costs one request a launch
