@@ -34,6 +34,10 @@ class Analytics internal constructor(private val client: TolinkuClient) {
         internal const val MAX_QUEUE_SIZE = 1000
     }
 
+    /** Set once the server says this Appspace does not attribute app opens. */
+    @Volatile
+    private var appOpensDisabled = false
+
     private val mutex = Mutex()
     private val eventQueue = mutableListOf<JSONObject>()
     private var flushTimerJob: Job? = null
@@ -47,6 +51,49 @@ class Analytics internal constructor(private val client: TolinkuClient) {
      * @param properties Optional key-value properties to attach to the event.
      * @throws IllegalArgumentException if eventType is blank.
      */
+    /**
+     * Report that a link opened the app, when it opened without the browser.
+     *
+     * An App Link hands the app the URL directly, so Tolinku is never contacted
+     * and the tap goes unrecorded. Those taps come from people who already have
+     * the app, so leaving them out makes a re-engagement campaign look like a
+     * failure exactly when it worked.
+     *
+     * Only http and https links are reported. A custom scheme means Tolinku's
+     * own hand-off page opened the app, and that tap was counted when the page
+     * was served, so passing one does nothing rather than counting it twice.
+     *
+     * Never throws. This runs on the path that routes the user somewhere, and a
+     * tap that goes unrecorded is not worth interrupting that.
+     */
+    suspend fun trackLinkOpen(url: String, userId: String? = null) {
+        if (appOpensDisabled) return
+
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return
+
+        // The scheme decides, and the server checks it again.
+        val scheme = try {
+            java.net.URI(trimmed).scheme?.lowercase()
+        } catch (t: Throwable) {
+            null
+        }
+        if (scheme != "http" && scheme != "https") return
+
+        try {
+            val body = JSONObject().put("url", trimmed)
+            if (!userId.isNullOrBlank()) body.put("user_id", userId)
+            val reply = client.postPublic("/v1/api/opens", body)
+            // Remembering a no means the setting costs one request a launch
+            // rather than one per link.
+            if (reply.has("attribute") && !reply.optBoolean("attribute", true)) {
+                appOpensDisabled = true
+            }
+        } catch (t: Throwable) {
+            // Deliberately silent.
+        }
+    }
+
     suspend fun track(eventType: String, properties: Map<String, Any>? = null) {
         require(eventType.isNotBlank()) { "eventType must not be blank" }
 

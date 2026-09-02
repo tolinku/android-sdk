@@ -264,6 +264,39 @@ object Tolinku {
     }
 
     /**
+     * Report that a link opened the app, when it opened without the browser.
+     *
+     * An App Link hands the app the URL directly, so Tolinku is never contacted
+     * and the tap goes unrecorded. Those taps come from people who already have
+     * your app, so leaving them out makes a re-engagement campaign look like a
+     * failure exactly when it worked.
+     *
+     * Call it wherever the app receives an incoming link, passing the URL
+     * unchanged:
+     *
+     * ```kotlin
+     * override fun onNewIntent(intent: Intent) {
+     *     super.onNewIntent(intent)
+     *     intent.data?.let { uri ->
+     *         lifecycleScope.launch { Tolinku.trackLinkOpen(uri.toString()) }
+     *     }
+     * }
+     * ```
+     *
+     * Only http and https links are reported. A custom scheme means Tolinku's
+     * own hand-off page opened the app, and that tap is already counted.
+     *
+     * Never throws, including when the SDK has not been configured.
+     */
+    @JvmStatic
+    suspend fun trackLinkOpen(url: String) {
+        // Unlike track, a missing instance is not worth throwing over: this sits
+        // on the path that routes the user somewhere.
+        val a = runCatching { analytics }.getOrNull() ?: return
+        a.trackLinkOpen(url, _userId)
+    }
+
+    /**
      * Check whether the SDK has been configured.
      */
     @JvmStatic
