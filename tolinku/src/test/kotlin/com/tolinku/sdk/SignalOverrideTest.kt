@@ -28,12 +28,17 @@ class SignalOverrideTest {
         osVersion: String? = null,
     ): JSONObject = JSONObject().apply {
         put("appspace_id", "app123")
-        put("timezone", timezone ?: collected["timezone"])
-        put("language", language ?: collected["language"])
-        put("screen_width", screenWidth ?: collected["screen_width"])
-        put("screen_height", screenHeight ?: collected["screen_height"])
-        put("device_pixel_ratio", devicePixelRatio ?: collected["device_pixel_ratio"])
-        put("os_version", osVersion ?: collected["os_version"])
+        // Blank and non-positive are treated as absent, which is what an unset
+        // configuration value and a failed lookup look like.
+        put("timezone", timezone?.trim()?.ifEmpty { null } ?: collected["timezone"])
+        put("language", language?.trim()?.ifEmpty { null } ?: collected["language"])
+        put("screen_width", screenWidth?.takeIf { it > 0 } ?: collected["screen_width"])
+        put("screen_height", screenHeight?.takeIf { it > 0 } ?: collected["screen_height"])
+        put(
+            "device_pixel_ratio",
+            devicePixelRatio?.takeIf { it.isFinite() && it > 0 } ?: collected["device_pixel_ratio"],
+        )
+        put("os_version", osVersion?.trim()?.ifEmpty { null } ?: collected["os_version"])
     }
 
     private val collected = mapOf(
@@ -94,5 +99,29 @@ class SignalOverrideTest {
         assertEquals(844, b.getInt("screen_height"))
         assertEquals(3.0, b.getDouble("device_pixel_ratio"), 0.001)
         assertEquals("17.1", b.getString("os_version"))
+    }
+
+    @Test
+    fun `a blank override does not discard what the device reported`() {
+        // An unset configuration value and a failed lookup both look like this.
+        val b = body(collected, timezone = "", language = "   ", osVersion = "  ")
+
+        assertEquals("Europe/London", b.getString("timezone"))
+        assertEquals("en-GB", b.getString("language"))
+        assertEquals("13", b.getString("os_version"))
+    }
+
+    @Test
+    fun `a non-positive measurement does not discard what was reported`() {
+        val b = body(collected, screenWidth = 0, screenHeight = -1, devicePixelRatio = 0.0)
+
+        assertEquals(411, b.getInt("screen_width"))
+        assertEquals(891, b.getInt("screen_height"))
+        assertEquals(2.625, b.getDouble("device_pixel_ratio"), 0.001)
+    }
+
+    @Test
+    fun `a real override is trimmed`() {
+        assertEquals("Asia/Seoul", body(collected, timezone = "  Asia/Seoul  ").getString("timezone"))
     }
 }

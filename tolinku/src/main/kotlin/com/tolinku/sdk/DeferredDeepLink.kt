@@ -101,13 +101,22 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
         // none at all.
         val body = JSONObject().apply {
             put("appspace_id", appspaceId)
-            put("timezone", timezone ?: TimeZone.getDefault().id)
-            put("language", language ?: Locale.getDefault().toLanguageTag())
-            put("screen_width", screenWidth ?: collectedWidth)
-            put("screen_height", screenHeight ?: collectedHeight)
+            // A blank string and a non-positive number are treated as absent
+            // rather than as an override. They are what an unset configuration
+            // value and a failed lookup look like, and taking them literally
+            // would discard a good value the device reported in favour of one
+            // the matcher cannot use.
+            put("timezone", timezone?.trim()?.ifEmpty { null } ?: TimeZone.getDefault().id)
+            put("language", language?.trim()?.ifEmpty { null } ?: Locale.getDefault().toLanguageTag())
+            put("screen_width", screenWidth?.takeIf { it > 0 } ?: collectedWidth)
+            put("screen_height", screenHeight?.takeIf { it > 0 } ?: collectedHeight)
             // Pixel ratio separates devices that report the same dp dimensions.
-            put("device_pixel_ratio", devicePixelRatio ?: context.resources.displayMetrics.density.toDouble())
-            put("os_version", osVersion ?: Build.VERSION.RELEASE ?: "")
+            put(
+                "device_pixel_ratio",
+                devicePixelRatio?.takeIf { it.isFinite() && it > 0 }
+                    ?: context.resources.displayMetrics.density.toDouble(),
+            )
+            put("os_version", osVersion?.trim()?.ifEmpty { null } ?: Build.VERSION.RELEASE ?: "")
         }
 
         return try {
