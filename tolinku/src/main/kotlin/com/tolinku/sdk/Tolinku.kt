@@ -274,7 +274,17 @@ object Tolinku {
      * Call it wherever the app receives an incoming link, passing the URL
      * unchanged:
      *
+     * Both ways a link arrives need it. onNewIntent runs only when the activity
+     * is already there, so a link that launched the app cold arrives in onCreate:
+     *
      * ```kotlin
+     * override fun onCreate(savedInstanceState: Bundle?) {
+     *     super.onCreate(savedInstanceState)
+     *     intent?.data?.let { uri ->
+     *         lifecycleScope.launch { Tolinku.trackLinkOpen(uri.toString()) }
+     *     }
+     * }
+     *
      * override fun onNewIntent(intent: Intent) {
      *     super.onNewIntent(intent)
      *     intent.data?.let { uri ->
@@ -282,6 +292,9 @@ object Tolinku {
      *     }
      * }
      * ```
+     *
+     * Wiring both is safe: the same link arriving twice in quick succession,
+     * which a configuration change can cause, is reported once.
      *
      * Only http and https links are reported. A custom scheme means Tolinku's
      * own hand-off page opened the app, and that tap is already counted.

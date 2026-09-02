@@ -32,11 +32,26 @@ class Analytics internal constructor(private val client: TolinkuClient) {
         internal const val FLUSH_INTERVAL_MS = 5000L
         /** Maximum number of events to keep in the queue to prevent unbounded growth. */
         internal const val MAX_QUEUE_SIZE = 1000
+        /** How long the same link is treated as one tap rather than two. */
+        internal const val OPEN_DEDUPE_MS = 5000L
     }
 
     /** Set once the server says this Appspace does not attribute app opens. */
     @Volatile
     private var appOpensDisabled = false
+
+    /**
+     * The last link reported, and when. A cold start and onNewIntent can both
+     * deliver the same tap depending on how the activity is wired, so an app
+     * instrumenting both would otherwise report it twice and be billed twice. A
+     * genuine second tap of the same link inside this window is implausible; a
+     * duplicate delivery of one tap is not.
+     */
+    @Volatile
+    private var lastOpenUrl: String? = null
+
+    @Volatile
+    private var lastOpenAt: Long = 0L
 
     private val mutex = Mutex()
     private val eventQueue = mutableListOf<JSONObject>()
@@ -79,6 +94,11 @@ class Analytics internal constructor(private val client: TolinkuClient) {
             null
         }
         if (scheme != "http" && scheme != "https") return
+
+        val now = System.currentTimeMillis()
+        if (trimmed == lastOpenUrl && now - lastOpenAt < OPEN_DEDUPE_MS) return
+        lastOpenUrl = trimmed
+        lastOpenAt = now
 
         try {
             val body = JSONObject().put("url", trimmed)
