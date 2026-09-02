@@ -58,26 +58,56 @@ class DeferredDeepLink internal constructor(private val client: TolinkuClient) {
      * If an application context is available, it also attempts to retrieve
      * the Google Play Install Referrer data.
      *
+     * The signals are read from the device, so nothing beyond the Appspace ID and
+     * a context needs passing. Pass one only where you hold a better value than
+     * the SDK can read, and pass it in the form matching compares against: an
+     * IANA timezone ("Asia/Seoul"), a BCP-47 tag with its region ("ko-KR"),
+     * screen size in density independent pixels, and a version starting with a
+     * digit ("13").
+     *
+     * A signal that is absent is skipped rather than counted as a failed
+     * comparison, so leaving one out is safe. One in the wrong shape is worse
+     * than none, which is why these are overrides rather than the only source.
+     *
      * @param appspaceId The Appspace ID to claim the link for.
      * @param context Android context used to read display metrics.
+     * @param timezone IANA identifier, overriding the device's.
+     * @param language BCP-47 tag with region, overriding the device's.
+     * @param screenWidth Screen width in density independent pixels.
+     * @param screenHeight Screen height in density independent pixels.
+     * @param devicePixelRatio Ratio of physical pixels to density independent ones.
+     * @param osVersion Version compared on its leading digits.
      * @return The [DeferredLink] if a match is found, or null otherwise.
      * @throws IllegalArgumentException if appspaceId is blank.
      * @throws TolinkuException if the request fails for reasons other than "not found".
      */
-    suspend fun claimBySignals(appspaceId: String, context: Context): DeferredLink? {
+    suspend fun claimBySignals(
+        appspaceId: String,
+        context: Context,
+        timezone: String? = null,
+        language: String? = null,
+        screenWidth: Int? = null,
+        screenHeight: Int? = null,
+        devicePixelRatio: Double? = null,
+        osVersion: String? = null,
+    ): DeferredLink? {
         require(appspaceId.isNotBlank()) { "appspaceId must not be blank" }
 
-        val (screenWidth, screenHeight) = getScreenDimensions(context)
+        val (collectedWidth, collectedHeight) = getScreenDimensions(context)
 
+        // Anything the caller passed wins. A value from their own lookup is
+        // better than one inferred here, and passing one must not discard the
+        // rest, which is the mistake that makes a partial override worse than
+        // none at all.
         val body = JSONObject().apply {
             put("appspace_id", appspaceId)
-            put("timezone", TimeZone.getDefault().id)
-            put("language", Locale.getDefault().toLanguageTag())
-            put("screen_width", screenWidth)
-            put("screen_height", screenHeight)
+            put("timezone", timezone ?: TimeZone.getDefault().id)
+            put("language", language ?: Locale.getDefault().toLanguageTag())
+            put("screen_width", screenWidth ?: collectedWidth)
+            put("screen_height", screenHeight ?: collectedHeight)
             // Pixel ratio separates devices that report the same dp dimensions.
-            put("device_pixel_ratio", context.resources.displayMetrics.density.toDouble())
-            put("os_version", Build.VERSION.RELEASE ?: "")
+            put("device_pixel_ratio", devicePixelRatio ?: context.resources.displayMetrics.density.toDouble())
+            put("os_version", osVersion ?: Build.VERSION.RELEASE ?: "")
         }
 
         return try {
