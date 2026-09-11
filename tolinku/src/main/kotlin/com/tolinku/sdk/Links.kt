@@ -107,6 +107,14 @@ class Links internal constructor(private val client: TolinkuClient) {
                 JSONObject().put("path", path),
             )
             val route = response.optJSONObject("route") ?: return null
+
+            // The answer went to a host taken from the URL this was given, so
+            // an app resolving a link from somewhere it does not control is
+            // talking to a stranger. The contract is a path: a full URL, or a
+            // protocol relative "//host" that reads as one, is a redirect
+            // waiting to happen in whatever the app does next.
+            val path = response.optString("deep_link_path")
+            if (!path.startsWith("/") || path.startsWith("//")) return null
             ResolvedLink(
                 route = ResolvedRoute(
                     prefix = route.optString("prefix"),
@@ -115,7 +123,7 @@ class Links internal constructor(private val client: TolinkuClient) {
                     linkType = route.optString("link_type").takeUnless { it.isEmpty() },
                 ),
                 token = response.optString("token", ""),
-                deepLinkPath = response.optString("deep_link_path", ""),
+                deepLinkPath = path,
             )
         } catch (e: Exception) {
             null

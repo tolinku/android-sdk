@@ -102,6 +102,31 @@ class LinksTest {
         assertEquals("/promo/a%2Fb", body.getString("path"))
     }
 
+    /**
+     * resolve sends its question to a host taken from the URL it was given, so
+     * an app resolving a link from somewhere it does not control is talking to
+     * a stranger. Anything but a path is a redirect waiting to happen.
+     */
+    private fun assertRefusesPath(badPath: String) = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody(answer.replace("/order/4821/receipt", badPath))
+        )
+        assertNull(links.resolve(linkUrl("/s7k2p9q/4821")))
+    }
+
+    @Test
+    fun `refuses an answer that is a full URL`() = assertRefusesPath("https://evil.example.com/take-over")
+
+    @Test
+    fun `refuses an answer that is protocol relative`() = assertRefusesPath("//evil.example.com/take-over")
+
+    @Test
+    fun `refuses an answer that is a bare word`() = assertRefusesPath("order/4821")
+
+    @Test
+    fun `refuses an answer that is nothing`() = assertRefusesPath("")
+
     @Test
     fun `says nothing for a custom scheme link`() = runTest {
         // That one already carries the path the app wants.
