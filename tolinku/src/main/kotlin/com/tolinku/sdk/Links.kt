@@ -4,17 +4,34 @@ import java.net.URI
 import org.json.JSONObject
 
 /**
+ * The route that answers a link.
+ *
+ * @property prefix the route's prefix, which may place its token with {token}
+ * @property name the route's name, as set in the dashboard
+ * @property template which landing page the route uses, or "none"
+ * @property linkType "dynamic" or "static", or null from an older platform
+ */
+data class ResolvedRoute(
+    val prefix: String,
+    val name: String,
+    val template: String,
+    val linkType: String?,
+)
+
+/**
  * What a Tolinku link turned out to mean.
  *
- * @property routePrefix the prefix of the route that answers this link
- * @property routeName the route's name, as set in the dashboard
+ * The same shape in every SDK, so an app moving between them reads one thing.
+ * The Appspace the link belongs to is deliberately not here: the app already
+ * knows which Appspace it is, and nothing about routing a link needs it.
+ *
+ * @property route the route that answers this link
  * @property token the token the link carried, or "" where it carried none
  * @property deepLinkPath the canonical path, with the token wherever the
  *   route's prefix puts it
  */
 data class ResolvedLink(
-    val routePrefix: String,
-    val routeName: String,
+    val route: ResolvedRoute,
     val token: String,
     val deepLinkPath: String,
 )
@@ -91,8 +108,12 @@ class Links internal constructor(private val client: TolinkuClient) {
             )
             val route = response.optJSONObject("route") ?: return null
             ResolvedLink(
-                routePrefix = route.optString("prefix"),
-                routeName = route.optString("name"),
+                route = ResolvedRoute(
+                    prefix = route.optString("prefix"),
+                    name = route.optString("name"),
+                    template = route.optString("template"),
+                    linkType = route.optString("link_type").takeUnless { it.isEmpty() },
+                ),
                 token = response.optString("token", ""),
                 deepLinkPath = response.optString("deep_link_path", ""),
             )

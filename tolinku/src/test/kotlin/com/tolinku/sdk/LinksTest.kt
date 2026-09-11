@@ -72,7 +72,9 @@ class LinksTest {
         assertNotNull(link)
         assertEquals("1007100", link!!.token)
         assertEquals("/order/1007100/receipt", link.deepLinkPath)
-        assertEquals("order/{token}/receipt", link.routePrefix)
+        assertEquals("order/{token}/receipt", link.route.prefix)
+        assertEquals("Order Receipt", link.route.name)
+        assertEquals("dynamic", link.route.linkType)
     }
 
     @Test
