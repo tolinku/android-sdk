@@ -83,6 +83,20 @@ internal class TolinkuClient(
     }
 
     /**
+     * Perform an unauthenticated POST to a host other than the configured one.
+     *
+     * A few public endpoints work out which Appspace they belong to from the
+     * hostname the request arrives on rather than from a key or an id, so a
+     * question about a link on a customer's own domain has to be asked on that
+     * domain. Everything else is unchanged: same timeouts, same retries.
+     */
+    suspend fun postPublicToOrigin(origin: String, path: String, body: JSONObject): JSONObject {
+        return executeWithRetry {
+            request(path, method = "POST", body = body, authenticated = false, origin = origin)
+        }
+    }
+
+    /**
      * Execute a request block with retry logic. Retries on:
      * - IOException (network errors)
      * - HTTP 429 (Too Many Requests), respecting the Retry-After header
@@ -160,9 +174,10 @@ internal class TolinkuClient(
         method: String,
         body: JSONObject? = null,
         queryParams: Map<String, String>? = null,
-        authenticated: Boolean = true
+        authenticated: Boolean = true,
+        origin: String? = null
     ): JSONObject {
-        val urlBuilder = StringBuilder(baseUrl.trimEnd('/'))
+        val urlBuilder = StringBuilder((origin ?: baseUrl).trimEnd('/'))
             .append(path)
 
         if (!queryParams.isNullOrEmpty()) {

@@ -58,6 +58,7 @@ object Tolinku {
     private var _referrals: Referrals? = null
     @Volatile
     private var _deferred: DeferredDeepLink? = null
+    private var _links: Links? = null
     @Volatile
     private var _messages: Messages? = null
     @Volatile
@@ -108,6 +109,16 @@ object Tolinku {
     @JvmStatic
     val deferred: DeferredDeepLink
         get() = _deferred ?: throw TolinkuException("Tolinku SDK not configured. Call Tolinku.configure() first.")
+
+    /**
+     * Turning a link the app was handed into the route and token it means.
+     *
+     * Needed for short links, which arrive as an opaque code that nothing on
+     * the device can interpret. See [Links.resolve].
+     */
+    @JvmStatic
+    val links: Links
+        get() = _links ?: throw TolinkuException("Tolinku SDK not configured. Call Tolinku.configure() first.")
 
     /**
      * Access the messages module for fetching in-app messages.
@@ -197,6 +208,7 @@ object Tolinku {
             _ecommerce = Ecommerce(newClient) { _userId }
             _referrals = Referrals(newClient)
             _deferred = DeferredDeepLink(newClient)
+            _links = Links(newClient)
             _messages = Messages(newClient)
             _context = context?.applicationContext
 
