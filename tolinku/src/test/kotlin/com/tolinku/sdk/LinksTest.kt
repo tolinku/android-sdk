@@ -78,6 +78,20 @@ class LinksTest {
     }
 
     @Test
+    fun `asks without the API key, since the host is not necessarily ours`() = runTest {
+        // The origin comes from the URL this was handed. An app resolving a
+        // link from somewhere it does not control would otherwise send the
+        // Appspace's key to a stranger.
+        server.enqueue(MockResponse().setResponseCode(200).setBody(answer))
+
+        links.resolve(linkUrl("/s7k2p9q/4821"))
+
+        val request = server.takeRequest()
+        assertNull(request.getHeader("X-API-Key"))
+        assertNull(request.getHeader("Authorization"))
+    }
+
+    @Test
     fun `leaves the query string out of the question`() = runTest {
         // A tapped link usually carries utm parameters, and they say nothing
         // about which route it is.
