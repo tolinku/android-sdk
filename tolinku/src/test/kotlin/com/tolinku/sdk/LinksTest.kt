@@ -15,7 +15,7 @@ import org.junit.Test
  * Turning a link the system handed the app into something routable.
  *
  * The URL an app receives is the one that was tapped, exactly as written. A
- * short link is an opaque code, "/imbwmum/1007100", and nothing on the device
+ * short link is an opaque code, "/s7k2p9q/4821", and nothing on the device
  * can say what the code stands for. An app parsing the path itself sees a first
  * segment it has never heard of and does nothing, so the link opens the app and
  * appears to fail with no error and no screen.
@@ -34,9 +34,9 @@ class LinksTest {
     private val answer = """
         {
           "route": {"prefix": "order/{token}/receipt", "name": "Order Receipt", "template": "none", "link_type": "dynamic"},
-          "token": "1007100",
-          "deep_link_path": "/order/1007100/receipt",
-          "appspace": {"name": "Tasonic", "slug": "tasonic"}
+          "token": "4821",
+          "deep_link_path": "/order/4821/receipt",
+          "appspace": {"name": "Example App", "slug": "example"}
         }
     """.trimIndent()
 
@@ -64,14 +64,14 @@ class LinksTest {
     fun `asks the link its own host, with just the path`() = runTest {
         server.enqueue(MockResponse().setResponseCode(200).setBody(answer))
 
-        val link = links.resolve(linkUrl("/imbwmum/1007100"))
+        val link = links.resolve(linkUrl("/s7k2p9q/4821"))
 
         val request = server.takeRequest()
         assertEquals("/v1/api/path", request.path)
-        assertEquals("/imbwmum/1007100", JSONObject(request.body.readUtf8()).getString("path"))
+        assertEquals("/s7k2p9q/4821", JSONObject(request.body.readUtf8()).getString("path"))
         assertNotNull(link)
-        assertEquals("1007100", link!!.token)
-        assertEquals("/order/1007100/receipt", link.deepLinkPath)
+        assertEquals("4821", link!!.token)
+        assertEquals("/order/4821/receipt", link.deepLinkPath)
         assertEquals("order/{token}/receipt", link.route.prefix)
         assertEquals("Order Receipt", link.route.name)
         assertEquals("dynamic", link.route.linkType)
@@ -83,10 +83,10 @@ class LinksTest {
         // about which route it is.
         server.enqueue(MockResponse().setResponseCode(200).setBody(answer))
 
-        links.resolve(linkUrl("/imbwmum/1007100?utm_source=qr"))
+        links.resolve(linkUrl("/s7k2p9q/4821?utm_source=qr"))
 
         val body = JSONObject(server.takeRequest().body.readUtf8())
-        assertEquals("/imbwmum/1007100", body.getString("path"))
+        assertEquals("/s7k2p9q/4821", body.getString("path"))
     }
 
     @Test
@@ -105,13 +105,13 @@ class LinksTest {
     @Test
     fun `says nothing for a custom scheme link`() = runTest {
         // That one already carries the path the app wants.
-        assertNull(links.resolve("tasonic://order/1007100/receipt"))
+        assertNull(links.resolve("example://order/4821/receipt"))
         assertEquals(0, server.requestCount)
     }
 
     @Test
     fun `says nothing for something that is not a link`() = runTest {
-        assertNull(links.resolve("/order/1007100"))
+        assertNull(links.resolve("/order/4821"))
         assertNull(links.resolve(""))
         assertEquals(0, server.requestCount)
     }
@@ -123,7 +123,7 @@ class LinksTest {
         // start. 404 is not retried, so one response is enough.
         server.enqueue(MockResponse().setResponseCode(404).setBody("{}"))
 
-        assertNull(links.resolve(linkUrl("/imbwmum/1007100")))
+        assertNull(links.resolve(linkUrl("/s7k2p9q/4821")))
     }
 
     @Test
