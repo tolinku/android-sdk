@@ -313,14 +313,17 @@ object TolinkuMessagePresenter {
                     action.startsWith("navigate:") -> {
                         val url = action.removePrefix("navigate:")
 
-                        // Only http and https: every other scheme is a way of doing
-                        // something other than opening a web page. Shared with the
-                        // rest of the SDK so the rule is one rule, and parsed rather
-                        // than prefix matched, which used to refuse HTTPS in capitals.
-                        val isValidUrl = isSafeUrl(url)
+                        // A denylist, not the http/https allowlist the rest of the
+                        // SDK uses: a message's call to action is most often a link
+                        // into this very app, myapp://order/4821, and an allowlist
+                        // dropped those without even calling onAction. Only the
+                        // schemes that can run code or forge an origin are refused,
+                        // which is the rule the platform applies when it authors the
+                        // message.
+                        val isValidUrl = isNavigableUrl(url)
                         if (!isValidUrl) {
                             if (Tolinku.debug) {
-                                Log.w(Tolinku.TAG, "Blocked invalid URL scheme in navigate action: $url")
+                                Log.w(Tolinku.TAG, "Blocked unsafe URL scheme in navigate action: $url")
                             }
                             markDismissed(context, message.id)
                             dialog.dismiss()
@@ -334,7 +337,13 @@ object TolinkuMessagePresenter {
                         if (onAction != null) {
                             onAction.invoke(url)
                         } else {
-                            // Default behavior: open URL via Intent
+                            // Default behavior: open URL via Intent.
+                            //
+                            // Now that a custom scheme can get this far, the catch
+                            // matters: startActivity throws ActivityNotFoundException
+                            // when nothing on the device handles the scheme, and a
+                            // message's call to action must never take the host app
+                            // down with it.
                             try {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
