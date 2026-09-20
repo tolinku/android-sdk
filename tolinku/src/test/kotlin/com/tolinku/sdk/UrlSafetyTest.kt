@@ -162,6 +162,43 @@ class NavigableUrlTest {
     }
 
     @Test
+    fun `refuses the schemes that read local storage or wrap another URL`() {
+        // Android, not the web, decides this list. A navigable URL reaches
+        // startActivity, where content: reads a ContentProvider and jar: and
+        // filesystem: carry a second URL that would otherwise be whatever the
+        // rest of the denylist just refused.
+        assertFalse(isNavigableUrl("content://com.host/secret"))
+        assertFalse(isNavigableUrl("content://media/external/images/media/1"))
+        assertFalse(isNavigableUrl("CONTENT://com.host/secret"))
+        assertFalse(isNavigableUrl("jar:file:///data/data/com.host/x.apk!/classes.dex"))
+        assertFalse(isNavigableUrl("filesystem:file:///persistent/secret"))
+    }
+
+    @Test
+    fun `allows an underscore in a scheme because Android does`() {
+        // <data android:scheme="my_app"> registers and Uri.parse reads it back,
+        // so apps ship these. RFC 3986 says no underscore, and following the
+        // RFC here dropped a customer's call to action silently.
+        assertTrue(isNavigableUrl("my_app://order/4821"))
+        assertTrue(isNavigableUrl("my_app_2://order/4821"))
+        assertTrue(isNavigableUrl("MY_APP://order/4821"))
+        // java.net.URI throws on the underscore rather than reporting a scheme,
+        // so this only works if the regex fallback allows it too.
+        assertTrue(isNavigableUrl("my_app:order"))
+    }
+
+    @Test
+    fun `widening the scheme pattern does not widen the denylist`() {
+        // A scheme still has to begin with a letter, so a leading underscore is
+        // no scheme at all, and the denied schemes are unaffected by the extra
+        // character being legal elsewhere in the name.
+        assertFalse(isNavigableUrl("_myapp://order/4821"))
+        assertFalse(isNavigableUrl("javascript:alert(1)"))
+        assertFalse(isNavigableUrl("data:text/html,x"))
+        assertFalse(isNavigableUrl("content://com.host/secret"))
+    }
+
+    @Test
     fun `reads the scheme of a URL that java net URI will not parse`() {
         // URI throws on an unencoded space, so relying on it alone would refuse
         // a working deep link and, worse, wave a dangerous one through as

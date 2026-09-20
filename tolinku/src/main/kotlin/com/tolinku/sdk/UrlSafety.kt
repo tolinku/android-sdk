@@ -34,22 +34,52 @@ internal fun isSafeUrl(url: String?): Boolean {
 }
 
 /**
- * The schemes that can run code or forge an origin when something follows them.
+ * The schemes that can run code, read local storage, or forge an origin when
+ * something follows them.
+ *
+ * Longer than the web platform's list in `safe-url.ts` on purpose. That list
+ * guards a browser, where `content:`, `jar:` and `filesystem:` mean nothing.
+ * Here the URL ends up at `startActivity`, so Android's rules are the ones that
+ * apply: `content:` reads a ContentProvider, including another app's private
+ * files wherever a permission has been granted, and `jar:` and `filesystem:`
+ * both carry a second URL inside them, so allowing either hands back whatever
+ * the rest of this set refuses. A denylist only holds if it names the wrappers
+ * too.
  */
-private val EXECUTABLE_SCHEMES = setOf("javascript", "vbscript", "data", "blob", "file")
+private val EXECUTABLE_SCHEMES = setOf(
+    "javascript",
+    "vbscript",
+    "data",
+    "blob",
+    "file",
+    "content",
+    "jar",
+    "filesystem"
+)
 
-/** What a scheme may be made of, per RFC 3986. */
-private val SCHEME_PATTERN = Regex("^([a-zA-Z][a-zA-Z0-9+.\\-]*):")
+/**
+ * What a scheme may be made of.
+ *
+ * RFC 3986 says a letter, then letters, digits, `+`, `-` and `.`. Underscore is
+ * allowed here on top of that because Android allows it: a manifest can declare
+ * `<data android:scheme="my_app">` and `Uri.parse("my_app://x").scheme` reads
+ * back `my_app`, so schemes spelled that way are registered by shipped apps.
+ * Holding to the RFC would drop a customer's call to action for a spelling
+ * their own manifest accepts, which is the defect this whole denylist exists to
+ * stop happening.
+ */
+private val SCHEME_PATTERN = Regex("^([a-zA-Z][a-zA-Z0-9+.\\-_]*):")
 
 /**
  * A URL's scheme, lowercased, or null when it carries none.
  *
  * `URI` is the authority on what a scheme is, but it throws on anything it
  * considers malformed, including URLs Android opens perfectly well: a space in
- * a path is enough. The pattern answers when `URI` cannot, so a deep link with
- * an unencoded character still has its scheme read rather than being refused,
- * and `data:text/html,<script>` still reports `data` rather than reaching the
- * denylist as an unrecognised string.
+ * a path is enough, and so is an underscore in the scheme, so `my_app://x`
+ * never reaches `URI.getScheme` at all. The pattern answers when `URI` cannot,
+ * so a deep link with an unencoded character or an underscore still has its
+ * scheme read rather than being refused, and `data:text/html,<script>` still
+ * reports `data` rather than reaching the denylist as an unrecognised string.
  */
 private fun schemeOf(url: String): String? {
     val parsed = try {

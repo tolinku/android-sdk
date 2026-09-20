@@ -320,7 +320,7 @@ object TolinkuMessagePresenter {
                         // schemes that can run code or forge an origin are refused,
                         // which is the rule the platform applies when it authors the
                         // message.
-                        val isValidUrl = isNavigableUrl(url)
+                        val isValidUrl = shouldFollowMessageAction(url)
                         if (!isValidUrl) {
                             if (Tolinku.debug) {
                                 Log.w(Tolinku.TAG, "Blocked unsafe URL scheme in navigate action: $url")
@@ -335,7 +335,7 @@ object TolinkuMessagePresenter {
                         dialog.dismiss()
 
                         if (onAction != null) {
-                            onAction.invoke(url)
+                            invokeActionHandler(url, onAction)
                         } else {
                             // Default behavior: open URL via Intent.
                             //
@@ -363,6 +363,47 @@ object TolinkuMessagePresenter {
                 }
             }
         }
+    }
+}
+
+/**
+ * Whether a message's `navigate:` action should be followed.
+ *
+ * One line, pulled out of the JavaScript bridge above so there is something to
+ * test. The bridge needs a Dialog, a Context and a WebView, so none of it runs
+ * on a plain JVM, yet the rule it applies is the entire point of this change:
+ * put `isSafeUrl` back here and every in-app message that links into the host
+ * app goes silently dead again, with no test to say so. Now one does.
+ */
+internal fun shouldFollowMessageAction(url: String): Boolean = isNavigableUrl(url)
+
+/**
+ * Hand an action URL to the host app's `onAction`, absorbing whatever it throws.
+ *
+ * That callback could only ever receive http and https before the denylist. It
+ * can now receive `tel:`, `intent:` or a customer's own scheme, so a host that
+ * reasonably wrote `Uri.parse(url).host!!` against the old contract throws an
+ * NPE the first time a message links into the app. It throws on the main
+ * thread, from inside our own dismiss handler, with no SDK frame left above it
+ * to catch anything, which means the app dies on a message tap. Widening what
+ * the SDK passes out means owning what comes back.
+ *
+ * @return true when the handler returned normally, false when it threw.
+ */
+internal fun invokeActionHandler(url: String, handler: (String) -> Unit): Boolean {
+    return try {
+        handler(url)
+        true
+    } catch (t: Throwable) {
+        // Throwable rather than Exception: a host callback that trips a
+        // NotImplementedError or an AssertionError would otherwise still take
+        // the app down, and an in-app message is never worth a crash.
+        //
+        // Logged unconditionally, not behind Tolinku.debug, because this is the
+        // only trace a swallowed host crash leaves. Silence here would turn a
+        // bug in the host's handler into a button that does nothing.
+        Log.w(Tolinku.TAG, "Message action handler threw for URL: $url", t)
+        false
     }
 }
 
