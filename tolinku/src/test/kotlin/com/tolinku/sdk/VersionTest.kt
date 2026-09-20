@@ -1,7 +1,10 @@
 package com.tolinku.sdk
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * [Tolinku.VERSION] is sent in the User-Agent on every request, so a value that
@@ -32,5 +35,28 @@ class VersionTest {
         // value published to Maven. Reading it here is what keeps them one thing.
         assertTrue(Tolinku.VERSION == BuildConfig.SDK_VERSION)
         assertTrue(Tolinku.VERSION.isNotBlank())
+    }
+
+    @Test
+    fun `the README tells people to install the version this is`() {
+        // It said 0.6.1 was 0.3.0 for three releases. Nothing was wrong with
+        // the code and everyone copying the install line got a version missing
+        // every fix since, which is a worse outcome than most real bugs and
+        // far quieter. The equivalent guard in the Flutter SDK has already
+        // caught this twice.
+        val readme = File("../README.md")
+        assertTrue("README.md not found at ${readme.absolutePath}", readme.exists())
+
+        val declared = Regex("""implementation\("com\.tolinku:sdk:([^"]+)"\)""")
+            .find(readme.readText())
+            ?.groupValues
+            ?.get(1)
+
+        assertNotNull("no com.tolinku:sdk install line in README.md", declared)
+        assertEquals(
+            "the README install line and the published version disagree",
+            Tolinku.VERSION,
+            declared,
+        )
     }
 }

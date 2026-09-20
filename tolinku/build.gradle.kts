@@ -153,3 +153,11 @@ afterEvaluate {
         }
     }
 }
+
+// The version test reads the README's install line, and Gradle has no way to
+// know that. Without this it decides the test task is up to date when only the
+// README changed, so the guard that exists to catch a stale install line is the
+// one thing that never runs after someone edits it.
+tasks.withType<Test>().configureEach {
+    inputs.file(rootProject.file("README.md")).withPathSensitivity(PathSensitivity.RELATIVE)
+}
