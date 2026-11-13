@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.7.0
+
+All five SDKs moved to 0.7.0 together, so the number means the same thing on
+every platform for once. Most of what is below is build tooling, but two of the
+changes move a floor for consumers, which is why this is not a patch release.
+
+### Fixed
+
+- The SDK could not be loaded in a unit test, including yours.
+
+  `Tolinku`'s coroutine scope was built in a property initializer, so the
+  class initializer reached for `Dispatchers.Main`, which needs an Android main
+  looper. In a plain JVM unit test there is none, so merely touching anything
+  on `Tolinku` threw `ExceptionInInitializerError` before a line of SDK code
+  ran. The only way around it was to call `Dispatchers.setMain` first, for a
+  scope the test never used, and nothing said so.
+
+  The scope is now built on first use. Behaviour in an app is unchanged: the
+  scope is still created on the main dispatcher, still cancelled and replaced
+  by `configure` and `shutdown`, and the only difference is that it is created
+  when something first needs it rather than when the class loads.
+
+  On older coroutines releases the access returned a dispatcher that failed
+  only if something dispatched to it, which is why this looked like it worked.
+  From coroutines 1.9 the access itself throws, so the same code now fails
+  immediately rather than subtly.
+
+- `Response.body` is no longer read through a null check. It is non-null in
+  okhttp 5, so the check was dead code; an empty body still reads as `{}`.
+
+### Changed
+
+- **okhttp moves from 4.12.0 to 5.3.0.** If your app pins okhttp itself,
+  nothing here forces your hand, but Gradle will resolve the higher of the two.
+
+  Deliberately not the newest 5.x: `okhttp-android` declares a minimum compile
+  SDK of 36 from 5.4.0 and 37 from 5.5.1, and that requirement passes through
+  to anyone depending on this library. 5.3.0 declares none, so it does not
+  move your compile SDK for you.
+
+- **compileSdk moves from 35 to 36, and consumers now need compileSdk 34 or
+  newer.** Two separate things make that true, so lowering either one on its
+  own would not help.
+
+  Android Gradle plugin 9 defaults to requiring that a library's consumers
+  compile against the same SDK as the library or newer. Left alone that would
+  have demanded 36 from everyone, so the library declares a minimum compile SDK
+  of 34 instead, which keeps apps on 34 and 35 building.
+
+  Independently of that, okhttp 5 brings `okhttp-android`, which depends on
+  `androidx.startup` 1.2.0, and that requires compileSdk 34 of anything that
+  depends on it. okhttp 4 had no `okhttp-android` artifact at all, so this part
+  is new in 0.7.0 and is not something this library can declare away.
+
+  Verified by building a consumer against the published artifact: compileSdk 34
+  succeeds, and compileSdk 33 is refused by both of the above. `minSdk` is
+  unchanged at 24.
+
+- **Java source and target compatibility move from 8 to 11.** Android Gradle
+  plugin 8.0 already required JDK 17 to run a build, so this does not ask
+  anything new of your toolchain.
+
+- **Kotlin moves from 1.9.24 to 2.2.10, which is a floor on your Kotlin too.**
+  The compiler reads metadata at most one minor version ahead of itself, so the
+  classes in this AAR, stamped 2.2.0, need Kotlin 2.1 or newer to read. On
+  anything older the build fails with "was compiled with an incompatible
+  version of Kotlin".
+
+  2.2.10 rather than the newest Kotlin on purpose: it is what Android Gradle
+  plugin 9.5 depends on, and nothing here uses a newer language feature.
+  Building with 2.4 would have stamped 2.4.0 and demanded Kotlin 2.3 from you
+  for no benefit.
+
+- Build tooling: Gradle 8.5 to 9.9.1, Android Gradle plugin 8.3.2 to 9.5.1,
+  coroutines 1.7.3 to 1.11.0. The Kotlin Android plugin is gone, because AGP 9
+  compiles Kotlin itself and refuses it. None of this reaches your app beyond
+  the notes above.
+
 ## 0.6.1
 
 ### Fixed

@@ -233,7 +233,10 @@ internal class TolinkuClient(
                 override fun onResponse(call: Call, response: Response) {
                     try {
                         response.use { resp ->
-                            val responseBody = resp.body?.string() ?: "{}"
+                            // No safe call: Response.body is non-null from okhttp 5,
+                            // where it was nullable in 4.x. An empty body reads as
+                            // an empty string, so the fallback still covers it.
+                            val responseBody = resp.body.string().ifEmpty { "{}" }
 
                             if (Tolinku.debug) {
                                 Log.d(Tolinku.TAG, "Response ${resp.code}: $responseBody")
