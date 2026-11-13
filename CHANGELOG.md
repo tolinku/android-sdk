@@ -40,12 +40,23 @@ changes move a floor for consumers, which is why this is not a patch release.
   to anyone depending on this library. 5.3.0 declares none, so it does not
   move your compile SDK for you.
 
-- **compileSdk moves from 35 to 36**, and the library now declares a minimum
-  compile SDK of 34 for consumers. Android Gradle plugin 9 defaults to
-  requiring that a library's consumers compile against the same SDK as the
-  library or newer; without that declaration, this change alone would have
-  refused to build in any app still on 34 or 35. Declaring the real floor keeps
-  those apps compiling. `minSdk` is unchanged at 24.
+- **compileSdk moves from 35 to 36, and consumers now need compileSdk 34 or
+  newer.** Two separate things make that true, so lowering either one on its
+  own would not help.
+
+  Android Gradle plugin 9 defaults to requiring that a library's consumers
+  compile against the same SDK as the library or newer. Left alone that would
+  have demanded 36 from everyone, so the library declares a minimum compile SDK
+  of 34 instead, which keeps apps on 34 and 35 building.
+
+  Independently of that, okhttp 5 brings `okhttp-android`, which depends on
+  `androidx.startup` 1.2.0, and that requires compileSdk 34 of anything that
+  depends on it. okhttp 4 had no `okhttp-android` artifact at all, so this part
+  is new in 0.7.0 and is not something this library can declare away.
+
+  Verified by building a consumer against the published artifact: compileSdk 34
+  succeeds, and compileSdk 33 is refused by both of the above. `minSdk` is
+  unchanged at 24.
 
 - **Java source and target compatibility move from 8 to 11.** Android Gradle
   plugin 8.0 already required JDK 17 to run a build, so this does not ask
