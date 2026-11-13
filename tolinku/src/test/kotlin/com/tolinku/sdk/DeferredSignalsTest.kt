@@ -30,6 +30,14 @@ import java.util.Locale
  * shipped previously, a bare language subtag and physical rather than density
  * independent pixels, and between them they made signal claiming unusable on Android.
  */
+// Display.getMetrics, WindowManager.defaultDisplay and the two argument Locale
+// constructor are all deprecated, and all three are used on purpose. The first
+// two are the pre-API-30 branch this file exists to exercise, which is the
+// branch unit tests take because they report SDK_INT as 0, and the production
+// code picks the modern API above R for itself. Locale.of, which replaces the
+// constructor, needs Java 19 and this library targets 11. Suppressed at the
+// class so a genuine deprecation somewhere else in it is still reported.
+@Suppress("DEPRECATION")
 class DeferredSignalsTest {
 
     private lateinit var server: MockWebServer
@@ -62,8 +70,10 @@ class DeferredSignalsTest {
      * Display.getMetrics is the one exercised here.
      */
     private fun mockContext(widthPx: Int, heightPx: Int, density: Float): Context {
-        // Plain Mockito rather than the mockito-kotlin DSL: that DSL is inline and
-        // compiled for JVM target 11, which this library does not build against.
+        // Plain Mockito rather than the mockito-kotlin DSL. The DSL is inline and
+        // compiled for JVM target 11, which this library did not build against
+        // when this was written; it does now, so the DSL would work here and
+        // this is no longer a constraint, just what the file already uses.
         val display = Mockito.mock(Display::class.java)
         Mockito.doAnswer { invocation ->
             val dm = invocation.getArgument<DisplayMetrics>(0)

@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: maven-publish
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Fail immediately with a readable message rather than after a full build,
       # since a missing credential otherwise surfaces as an opaque 401 at upload.
@@ -32,12 +32,17 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      # setup-gradle v5, not v6, deliberately. v6 moved this action's caching
+      # into a separate closed-source library and dropped its configuration
+      # cache support pending a reimplementation. v5 is the last fully
+      # open-source line and nothing here needs what v6 adds, so this is a
+      # choice rather than a version left behind.
+      - uses: gradle/actions/setup-gradle@v5
 
       - run: ./gradlew :tolinku:testDebugUnitTest
 

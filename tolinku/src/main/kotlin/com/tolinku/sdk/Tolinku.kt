@@ -68,13 +68,49 @@ object Tolinku {
     @Volatile
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
+    private val scopeLock = Any()
+
+    @Volatile
+    private var _scope: CoroutineScope? = null
+
     /**
      * Coroutine scope owned by the SDK, used by async callback wrappers.
      * Cancelled and recreated on [shutdown] / [configure].
+     *
+     * Built on first use rather than when this class loads. Building it in the
+     * property initializer meant the class initializer touched
+     * `Dispatchers.Main`, which needs an Android main looper. Loading the class
+     * anywhere without one, which is every plain JVM unit test, threw
+     * ExceptionInInitializerError before a line of SDK code ran. On older
+     * coroutines releases that access returned a dispatcher that only failed if
+     * something actually dispatched to it, so the eager version appeared to
+     * work; from 1.9 the access itself throws, which is what surfaced this.
+     *
+     * It matters beyond our own tests: a customer unit-testing their own code
+     * had to call `Dispatchers.setMain` before touching anything on Tolinku,
+     * for a scope their test never used.
      */
-    @Volatile
-    internal var scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-        private set
+    internal val scope: CoroutineScope
+        get() = _scope ?: synchronized(scopeLock) {
+            _scope ?: newScope().also { _scope = it }
+        }
+
+    private fun newScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * Cancel the scope and drop it, so the next use builds a fresh one.
+     *
+     * Deliberately does not build the replacement here: doing so would put the
+     * `Dispatchers.Main` access back into [configure] and [shutdown], and
+     * shutdown in particular is something a test calls to clean up.
+     */
+    private fun resetScope() {
+        synchronized(scopeLock) {
+            _scope?.cancel()
+            _scope = null
+        }
+    }
 
     private val lock = Any()
 
@@ -192,9 +228,8 @@ object Tolinku {
             _analytics?.let { runBlocking { it.shutdown() } }
             _ecommerce?.let { runBlocking { it.shutdown() } }
 
-            // Cancel the previous scope and create a fresh one
-            scope.cancel()
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+            // Cancel the previous scope; the next use builds a fresh one
+            resetScope()
 
             // Shut down any existing client
             client?.shutdown()
@@ -234,7 +269,6 @@ object Tolinku {
                                         Log.w(TAG, "Lifecycle flush failed: ${e.message}")
                                     }
                                 }
-                                Unit
                             }
                         }
                     }
@@ -363,8 +397,7 @@ object Tolinku {
             }
 
             // Cancel the SDK coroutine scope
-            scope.cancel()
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+            resetScope()
 
             client?.shutdown()
             client = null

@@ -1,15 +1,17 @@
 plugins {
+    // No org.jetbrains.kotlin.android: AGP 9 compiles Kotlin itself and fails
+    // the build if that plugin is also applied. The Kotlin version comes from
+    // the buildscript classpath in the root build file.
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("maven-publish")
     id("signing")
 }
 
-val sdkVersion = "0.6.1"
+val sdkVersion = "0.7.0"
 
 android {
     namespace = "com.tolinku.sdk"
-    compileSdk = 35
+    compileSdk = 36
 
     buildFeatures {
         buildConfig = true
@@ -21,6 +23,16 @@ android {
         buildConfigField("String", "SDK_VERSION", "\"$sdkVersion\"")
 
         consumerProguardFiles("consumer-rules.pro")
+
+        // AGP 9 defaults to requiring that consumers of a library compile
+        // against the same or a higher SDK than the library did. Left alone,
+        // moving this module to compileSdk 36 would refuse to build in any
+        // customer app still on 34 or 35, which is a breaking change none of
+        // them asked for and would read to them as our bug. Declaring the real
+        // floor keeps those apps compiling.
+        aarMetadata {
+            minCompileSdk = 34
+        }
     }
 
     buildTypes {
@@ -51,28 +63,30 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = "1.8"
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 
 dependencies {
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 5.3.0 rather than the newest 5.x on purpose. okhttp-android declares a
+    // minCompileSdk of 36 from 5.4.0 and 37 from 5.5.1, and that constraint
+    // passes straight through to anyone who depends on this library: taking
+    // 5.5.1 would both break our own build, since AGP 9.5 cannot compile past
+    // API 36.1, and force every customer onto compileSdk 37. 5.3.0 declares no
+    // floor at all, so the aarMetadata.minCompileSdk above stays the real one.
+    implementation("com.squareup.okhttp3:okhttp:5.3.0")
     // Play Install Referrer: the deterministic half of deferred linking on
     // Android. Without it a deferred install can only be matched on device
     // signals, which is probabilistic and expires in hours rather than days.
     implementation("com.android.installreferrer:installreferrer:2.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
-    testImplementation("org.json:json:20231013")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:6.4.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.3.0")
+    testImplementation("org.json:json:20260814")
 }
 
 // ---------------------------------------------------------------------------
@@ -161,3 +175,8 @@ afterEvaluate {
 tasks.withType<Test>().configureEach {
     inputs.file(rootProject.file("README.md")).withPathSensitivity(PathSensitivity.RELATIVE)
 }
+
+// jvmTarget is deliberately not set. With built-in Kotlin it defaults to
+// android.compileOptions.targetCompatibility, so the Kotlin and Java halves of
+// the library cannot drift apart the way they could when both were written out
+// by hand.
