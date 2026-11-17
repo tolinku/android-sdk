@@ -81,7 +81,7 @@ class Analytics internal constructor(private val client: TolinkuClient) {
      * Never throws. This runs on the path that routes the user somewhere, and a
      * tap that goes unrecorded is not worth interrupting that.
      */
-    suspend fun trackLinkOpen(url: String, userId: String? = null) {
+    suspend fun trackLinkOpen(url: String, userId: String? = null, deferred: Boolean = false) {
         if (appOpensDisabled) return
 
         val trimmed = url.trim()
@@ -105,6 +105,12 @@ class Analytics internal constructor(private val client: TolinkuClient) {
             // and React Native SDKs are the same on both. Without this an app
             // open lands in a blank bucket on every breakdown.
             val body = JSONObject().put("url", trimmed).put("platform", "android")
+            // Whether this open followed a deferred install. Only the app
+            // knows. An ordinary open is somebody who already had the app and
+            // can never convert to an install; an open after a deferred claim
+            // is the last stage of the install funnel. The server records them
+            // as different events and must not pool them.
+            if (deferred) body.put("deferred", true)
             if (!userId.isNullOrBlank()) body.put("user_id", userId)
             val reply = client.postPublic("/v1/api/opens", body)
             // Remembering a no means the setting costs one request a launch

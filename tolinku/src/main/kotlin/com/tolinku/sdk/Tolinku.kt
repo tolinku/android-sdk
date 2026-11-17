@@ -348,11 +348,11 @@ object Tolinku {
      * Never throws, including when the SDK has not been configured.
      */
     @JvmStatic
-    suspend fun trackLinkOpen(url: String) {
+    suspend fun trackLinkOpen(url: String, deferred: Boolean = false) {
         // Unlike track, a missing instance is not worth throwing over: this sits
         // on the path that routes the user somewhere.
         val a = runCatching { analytics }.getOrNull() ?: return
-        a.trackLinkOpen(url, _userId)
+        a.trackLinkOpen(url, _userId, deferred)
     }
 
     /**
