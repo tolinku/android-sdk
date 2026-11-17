@@ -348,7 +348,27 @@ object Tolinku {
      * Never throws, including when the SDK has not been configured.
      */
     @JvmStatic
-    suspend fun trackLinkOpen(url: String, deferred: Boolean = false) {
+    suspend fun trackLinkOpen(url: String) {
+        trackLinkOpen(url, false)
+    }
+
+    /**
+     * As above, saying whether this open followed a deferred install.
+     *
+     * Only the app knows. An ordinary open is somebody who already had the app
+     * and can never convert to an install; an open after a deferred claim is
+     * the last stage of the install funnel. The server records them as
+     * different events and must not pool them.
+     *
+     * Deliberately a second function rather than a default argument on the
+     * first. A default would compile to trackLinkOpen(String, boolean,
+     * Continuation) and REMOVE the one-argument signature from the class, so
+     * every app already compiled against this library would hit a
+     * NoSuchMethodError at runtime until it was rebuilt. Two functions keep the
+     * old symbol exactly as it was.
+     */
+    @JvmStatic
+    suspend fun trackLinkOpen(url: String, deferred: Boolean) {
         // Unlike track, a missing instance is not worth throwing over: this sits
         // on the path that routes the user somewhere.
         val a = runCatching { analytics }.getOrNull() ?: return
