@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.9.0
+
+### Added
+
+- `DeferredLink.url`, the absolute URL for a claimed link.
+
+- `Tolinku.enableAutoLinkTracking()`, which reports the link that launched the
+  app without you wiring `trackLinkOpen` into `onCreate`.
+
+  Keep your `onNewIntent` call. A link tapped while the app is already running
+  never reaches `ActivityLifecycleCallbacks`, and reaches `activity.intent` only
+  if you call `setIntent`, so the warm case is still yours. Reporting both is
+  safe: the same link inside a few seconds is reported once.
+
+  A separate call rather than an argument to `configure` because a Kotlin
+  default argument compiles the old signature out of the library, which would
+  break apps that did not recompile. The same reason `trackLinkOpen` is two
+  functions instead of one.
+
+  Off unless you call it, because a reported open is billed as a click.
+
+### Fixed
+
+- The deferred open documented in 0.8.0 could never actually be reported.
+
+  0.8.0 added the flag, and the only documented way to use it passed
+  `deepLinkPath`, a path. Every SDK drops anything without an http or https
+  scheme before it reaches the network, and the call never throws, so it failed
+  in silence on every platform. The server could not have accepted a path
+  either: the host is how it finds your Appspace and the only thing proving the
+  link is yours, and your device has no way to know it.
+
+  A claim now answers with `url` as well as `deep_link_path`, built from your
+  Appspace's own host. Report that. The scheme check is unchanged, because it is
+  the ownership check and not a validation nicety.
+
+  Older servers do not send the field, so it is optional.
+
+### Changed
+
+- `DeferredLink` gained a fifth property, so its constructor signature changed.
+
+  Source compatible, since the new property is last and defaults to null, and
+  `component1()` through `component4()` still mean what they did. Code that
+  constructs a `DeferredLink` directly, which in practice is only this SDK,
+  needs recompiling. This is why 0.9.0 rather than 0.8.1.
+
 ## 0.8.0
 
 ### Added

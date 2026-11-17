@@ -87,7 +87,22 @@ data class DeferredLink(
     val deepLinkPath: String,
     val appspaceId: String,
     val referrerId: String?,
-    val referralCode: String?
+    val referralCode: String?,
+    /**
+     * The absolute URL for this link, for reporting the open that follows.
+     *
+     * Reporting an open needs the whole URL, not the path: the host is how the
+     * server finds the Appspace and the only thing proving the link belongs to
+     * it, and the device has no way to know it. Absent from servers older than
+     * this field, so it is nullable.
+     *
+     * Last and defaulted on purpose. A data class generates componentN() in
+     * declaration order, so putting it anywhere else would silently change what
+     * an app destructuring this gets. The default keeps existing source
+     * compiling; the constructor signature changes either way, which is why
+     * this ships in a minor rather than a patch.
+     */
+    val url: String? = null,
 ) {
     companion object {
         @JvmStatic
@@ -95,6 +110,7 @@ data class DeferredLink(
             return DeferredLink(
                 deepLinkPath = json.optString("deep_link_path", ""),
                 appspaceId = json.optString("appspace_id", ""),
+                url = json.optStringOrNull("url"),
                 referrerId = json.optStringOrNull("referrer_id"),
                 referralCode = json.optStringOrNull("referral_code")
             )

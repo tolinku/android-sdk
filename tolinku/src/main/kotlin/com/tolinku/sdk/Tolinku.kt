@@ -68,6 +68,9 @@ object Tolinku {
     @Volatile
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
+    /** Registered only by enableAutoLinkTracking, and taken down by shutdown. */
+    private var autoLinkCallbacks: Application.ActivityLifecycleCallbacks? = null
+
     private val scopeLock = Any()
 
     @Volatile
@@ -347,6 +350,74 @@ object Tolinku {
      *
      * Never throws, including when the SDK has not been configured.
      */
+    /**
+     * Report links that launch the app, without wiring trackLinkOpen by hand.
+     *
+     * Call once after [configure]. Off unless called, because a reported open
+     * is billed as a click and an upgrade must not raise somebody's bill for
+     * them.
+     *
+     * A separate function rather than a parameter on [configure] for the same
+     * reason [trackLinkOpen] is two functions instead of one with a default: a
+     * Kotlin default argument compiles the old signature out of the ABI, so
+     * adding one to configure would break every app that did not recompile.
+     *
+     * ## What it covers, and what it does not
+     *
+     * Only the cold start, where the link arrives as the launching Activity's
+     * intent. A link tapped while the app is already running arrives at
+     * onNewIntent, which ActivityLifecycleCallbacks never sees, and reaches
+     * activity.intent only if the app calls setIntent. So keep the manual call
+     * in onNewIntent:
+     *
+     * ```kotlin
+     * override fun onNewIntent(intent: Intent) {
+     *     super.onNewIntent(intent)
+     *     intent.data?.let { lifecycleScope.launch { Tolinku.trackLinkOpen(it.toString()) } }
+     * }
+     * ```
+     *
+     * Reporting both is safe: the same link inside a few seconds is reported
+     * once.
+     *
+     * The open after a deferred install is not covered either. Only your app
+     * knows it just claimed a link, so that one stays explicit.
+     */
+    @JvmStatic
+    fun enableAutoLinkTracking() {
+        val app = _context as? Application
+        if (app == null) {
+            if (debug) Log.w(TAG, "enableAutoLinkTracking needs an Application context passed to configure()")
+            return
+        }
+        autoLinkCallbacks?.let { app.unregisterActivityLifecycleCallbacks(it) }
+
+        val callbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                // Created, not resumed: resumed fires again on every return to
+                // the app, and the intent that launched it is still attached,
+                // so the same tap would be reported for as long as the Activity
+                // lives.
+                val data = try { activity.intent?.data?.toString() } catch (t: Throwable) { null }
+                if (data.isNullOrBlank()) return
+                scope.launch {
+                    try { trackLinkOpen(data) } catch (t: Throwable) {
+                        if (debug) Log.w(TAG, "Auto link report failed: ${t.message}")
+                    }
+                }
+            }
+
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        }
+        app.registerActivityLifecycleCallbacks(callbacks)
+        autoLinkCallbacks = callbacks
+    }
+
     @JvmStatic
     suspend fun trackLinkOpen(url: String) {
         trackLinkOpen(url, false)
@@ -432,6 +503,10 @@ object Tolinku {
                 (_context as? Application)?.unregisterActivityLifecycleCallbacks(cb)
             }
             lifecycleCallbacks = null
+            autoLinkCallbacks?.let { cb ->
+                (_context as? Application)?.unregisterActivityLifecycleCallbacks(cb)
+            }
+            autoLinkCallbacks = null
             _context = null
             _userId = null
         }
