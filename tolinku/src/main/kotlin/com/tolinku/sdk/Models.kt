@@ -99,8 +99,9 @@ data class DeferredLink(
      * Last and defaulted on purpose. A data class generates componentN() in
      * declaration order, so putting it anywhere else would silently change what
      * an app destructuring this gets. The default keeps existing source
-     * compiling; the constructor signature changes either way, which is why
-     * this ships in a minor rather than a patch.
+     * compiling. The constructor signature changes either way, which a patch
+     * release carries because nothing outside this SDK constructs a
+     * DeferredLink: you receive one from claimDeferredLink.
      */
     val url: String? = null,
 ) {
