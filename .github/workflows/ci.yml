@@ -14,4 +14,16 @@ jobs:
         with:
           distribution: corretto
           java-version: 17
+
+      # Dependencies cached, as publish.yml already does. Without it every run
+      # resolves the Kotlin Gradle plugin from Maven Central, which answers 429
+      # when a runner is unlucky, and the build fails for a reason that has
+      # nothing to do with the commit. The flutter-sdk example build failed that
+      # way on a version bump that touched four files, none of them Gradle's.
+      #
+      # setup-gradle v5, not v6, for the reason given in publish.yml: v6 moved
+      # the caching into a separate closed-source library and dropped
+      # configuration cache support.
+      - uses: gradle/actions/setup-gradle@v5
+
       - run: ./gradlew :tolinku:test
