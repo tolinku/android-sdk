@@ -23,6 +23,22 @@
 
 ### Fixed
 
+- A deferred open was dropped when an ordinary open for the same link had just
+  been reported.
+
+  The dedupe that keeps one tap from being counted twice was keyed on the URL
+  alone. Somebody who taps a link, has no app, installs, then taps the link
+  again delivers the ordinary open first and the deferred one from the claim a
+  moment later, so the report that completes the install funnel was swallowed by
+  the one before it, in exactly the case the funnel's last stage exists to show.
+  The flag is part of the key now: the two are different events on the server
+  and only the app can tell them apart.
+
+  The rule moved into its own internal type so it could be tested at all. It
+  was three fields and a comparison inside `trackLinkOpen`, reachable only with
+  an Android framework and a network, and this was the one SDK of the four with
+  no test for it, which is how the flag came to be missing from the key.
+
 - The deferred open documented in 0.8.0 could never actually be reported.
 
   0.8.0 added the flag, and the only documented way to use it passed

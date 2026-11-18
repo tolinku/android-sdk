@@ -40,18 +40,7 @@ class Analytics internal constructor(private val client: TolinkuClient) {
     @Volatile
     private var appOpensDisabled = false
 
-    /**
-     * The last link reported, and when. A cold start and onNewIntent can both
-     * deliver the same tap depending on how the activity is wired, so an app
-     * instrumenting both would otherwise report it twice and be billed twice. A
-     * genuine second tap of the same link inside this window is implausible; a
-     * duplicate delivery of one tap is not.
-     */
-    @Volatile
-    private var lastOpenUrl: String? = null
-
-    @Volatile
-    private var lastOpenAt: Long = 0L
+    private val openDedupe = OpenDedupe()
 
     private val mutex = Mutex()
     private val eventQueue = mutableListOf<JSONObject>()
@@ -95,10 +84,7 @@ class Analytics internal constructor(private val client: TolinkuClient) {
         }
         if (scheme != "http" && scheme != "https") return
 
-        val now = System.currentTimeMillis()
-        if (trimmed == lastOpenUrl && now - lastOpenAt < OPEN_DEDUPE_MS) return
-        lastOpenUrl = trimmed
-        lastOpenAt = now
+        if (openDedupe.shouldSkip(trimmed, deferred)) return
 
         try {
             // The User-Agent names the SDK, not the platform, and the Flutter
@@ -298,5 +284,45 @@ class Analytics internal constructor(private val client: TolinkuClient) {
             }
             throw e
         }
+    }
+}
+
+/**
+ * Whether a reported open is a repeat of the one just before it.
+ *
+ * Its own type so the rule can be tested without an Android framework or a
+ * network. It was three fields and a comparison inside `trackLinkOpen`, and
+ * this was the only one of the four SDKs with no test for it at all, which is
+ * how the deferred flag came to be missing from the key.
+ *
+ * A cold start and onNewIntent can both deliver the same tap depending on how
+ * the activity is wired, so an app instrumenting both would otherwise report it
+ * twice and be billed twice. A genuine second tap of the same link inside the
+ * window is implausible; a duplicate delivery of one tap is not.
+ *
+ * The deferred flag is part of the key. An ordinary open and a deferred one are
+ * different events on the server, and only the app can tell them apart, so a
+ * deferred report just after an ordinary one for the same link is new
+ * information rather than a repeat. Keyed on the URL alone, somebody who tapped
+ * a link, installed, then tapped it again would have the deferred report
+ * swallowed, losing the last stage of the install funnel in the one case it
+ * exists to show.
+ */
+internal class OpenDedupe(private val windowMs: Long = Analytics.OPEN_DEDUPE_MS) {
+    private var lastUrl: String? = null
+    private var lastAt: Long = 0L
+    private var lastDeferred = false
+
+    @Synchronized
+    fun shouldSkip(
+        url: String,
+        deferred: Boolean,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean {
+        if (url == lastUrl && deferred == lastDeferred && now - lastAt < windowMs) return true
+        lastUrl = url
+        lastAt = now
+        lastDeferred = deferred
+        return false
     }
 }
