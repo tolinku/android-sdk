@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0
+## 0.8.1
 
 ### Added
 
@@ -43,9 +43,14 @@
 - `DeferredLink` gained a fifth property, so its constructor signature changed.
 
   Source compatible, since the new property is last and defaults to null, and
-  `component1()` through `component4()` still mean what they did. Code that
-  constructs a `DeferredLink` directly, which in practice is only this SDK,
-  needs recompiling. This is why 0.9.0 rather than 0.8.1.
+  `component1()` through `component4()` still mean what they did. The primary
+  constructor gained a parameter, so its JVM signature changed and the old
+  four-argument form is no longer in the artifact.
+
+  Shipped in a patch release because a `DeferredLink` is a response model: you
+  receive one from `claimDeferredLink`, you do not build one. If you do
+  construct or `copy()` one, recompile against this version rather than
+  dropping the new artifact onto an existing build.
 
 ## 0.8.0
 
