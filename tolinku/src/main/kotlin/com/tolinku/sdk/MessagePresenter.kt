@@ -20,9 +20,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 
 /**
  * Handles presenting in-app messages using a WebView-based dialog overlay.
@@ -37,6 +34,10 @@ object TolinkuMessagePresenter {
     private const val DISMISSED_PREFIX = "tolinku_dismissed_"
     private const val IMPRESSIONS_PREFIX = "tolinku_impressions_"
     private const val LAST_SHOWN_PREFIX = "tolinku_last_shown_"
+    // Exact times (epoch ms). Named so no message id can make them clash with the two keys above,
+    // which hold days written by earlier versions and are still read.
+    private const val DISMISSED_AT_PREFIX = "tolinku_dismissedAt_"
+    private const val LAST_SHOWN_AT_PREFIX = "tolinku_lastShownAt_"
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -177,35 +178,22 @@ object TolinkuMessagePresenter {
      */
     fun isMessageDismissed(context: Context, message: Message): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val dismissedDate = prefs.getString("$DISMISSED_PREFIX${message.id}", null)
-            ?: return false
-
-        // If dismissDays is null, the message stays dismissed forever once dismissed.
-        val dismissDays = message.dismissDays ?: return true
-
-        return try {
-            val dismissed = LocalDate.parse(dismissedDate, DateTimeFormatter.ISO_LOCAL_DATE)
-            val now = LocalDate.now()
-            val daysSinceDismissal = ChronoUnit.DAYS.between(dismissed, now)
-            daysSinceDismissal < dismissDays
-        } catch (e: Exception) {
-            if (Tolinku.debug) {
-                Log.w(Tolinku.TAG, "Failed to parse dismissed date: $dismissedDate", e)
-            }
-            false
-        }
+        val at = readTime(prefs, DISMISSED_AT_PREFIX, DISMISSED_PREFIX, message.id)
+        return MessageTiming.stillDismissed(at, message.dismissDays, System.currentTimeMillis())
     }
 
     /**
-     * Mark a message as dismissed by storing the current date in SharedPreferences.
+     * Mark a message as dismissed by storing the current time in SharedPreferences.
      *
      * @param context Android context for SharedPreferences access.
      * @param messageId The ID of the message to mark as dismissed.
      */
     fun markDismissed(context: Context, messageId: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-        prefs.edit().putString("$DISMISSED_PREFIX$messageId", today).apply()
+        prefs.edit()
+            .putLong("$DISMISSED_AT_PREFIX$messageId", System.currentTimeMillis())
+            .remove("$DISMISSED_PREFIX$messageId")
+            .apply()
 
         if (Tolinku.debug) {
             Log.d(Tolinku.TAG, "Message dismissed: $messageId")
@@ -231,21 +219,8 @@ object TolinkuMessagePresenter {
         }
 
         // Check min interval
-        val minIntervalHours = message.minIntervalHours
-        if (minIntervalHours != null && minIntervalHours > 0) {
-            val lastShown = prefs.getString("$LAST_SHOWN_PREFIX${message.id}", null)
-            if (lastShown != null) {
-                return try {
-                    val lastShownDate = LocalDate.parse(lastShown, DateTimeFormatter.ISO_LOCAL_DATE)
-                    val hoursSince = ChronoUnit.HOURS.between(lastShownDate.atStartOfDay(), LocalDate.now().atStartOfDay())
-                    hoursSince < minIntervalHours
-                } catch (e: Exception) {
-                    false
-                }
-            }
-        }
-
-        return false
+        val lastShown = readTime(prefs, LAST_SHOWN_AT_PREFIX, LAST_SHOWN_PREFIX, message.id)
+        return MessageTiming.tooSoon(lastShown, message.minIntervalHours, System.currentTimeMillis())
     }
 
     /**
@@ -259,12 +234,20 @@ object TolinkuMessagePresenter {
         val count = prefs.getInt("$IMPRESSIONS_PREFIX$messageId", 0)
         prefs.edit()
             .putInt("$IMPRESSIONS_PREFIX$messageId", count + 1)
-            .putString("$LAST_SHOWN_PREFIX$messageId", LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
+            .putLong("$LAST_SHOWN_AT_PREFIX$messageId", System.currentTimeMillis())
+            .remove("$LAST_SHOWN_PREFIX$messageId")
             .apply()
 
         if (Tolinku.debug) {
             Log.d(Tolinku.TAG, "Message impression recorded: $messageId (count: ${count + 1})")
         }
+    }
+
+    /** A stored time: the exact one, else a day an earlier version stored, else null. */
+    private fun readTime(prefs: android.content.SharedPreferences, exactPrefix: String, legacyPrefix: String, id: String): Long? {
+        val exact = "$exactPrefix$id"
+        if (prefs.contains(exact)) return prefs.getLong(exact, 0L).takeIf { it > 0L }
+        return MessageTiming.legacyDayToMs(prefs.getString("$legacyPrefix$id", null))
     }
 
     private fun runOnMainThread(block: () -> Unit) {

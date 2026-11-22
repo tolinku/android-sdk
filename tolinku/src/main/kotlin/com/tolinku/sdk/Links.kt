@@ -65,14 +65,96 @@ class Links internal constructor(private val client: TolinkuClient) {
      * What this link means, or null if it means nothing here.
      *
      * The question goes to the link's own host, because that is how the
-     * platform knows which Appspace is being asked about, which also means a
-     * link on a domain that is not yours simply answers nothing.
+     * platform knows which Appspace is being asked about. When that host is not
+     * Tolinku's, as the click tracking domain an email platform wraps every
+     * link in is not, the question goes once more to the configured API, which
+     * can see through the wrapping. A link that belongs to neither simply
+     * answers nothing.
+     *
+     * Each question is asked once, with [TolinkuClient.ONE_SHOT_TIMEOUT_MS] to
+     * answer. Resolving a link counts a click, so asking again would count it
+     * twice, and someone is waiting on the answer with the app half open.
      *
      * Never throws. A link that cannot be resolved, for a bad network or any
      * other reason, is one the app should fall back to its own handling for,
      * and an exception in the middle of a cold start is no way to say so.
      */
     suspend fun resolve(url: String): ResolvedLink? {
+        val link = normalise(url) ?: return null
+
+        // Step 1: the link's own host, without the key. The origin comes from
+        // the URL this was handed, and an app resolving a link from somewhere
+        // it does not control would otherwise send the key to a stranger.
+        val reply = try {
+            client.postOnce(
+                "/v1/api/path",
+                JSONObject().put("path", link.path).put("url", link.whole),
+                authenticated = false,
+                origin = link.origin,
+            )
+        } catch (e: Exception) {
+            null
+        }
+        if (reply != null) {
+            val json = jsonOrNull(reply.body)
+            if (reply.code == 200 && json != null) {
+                parse(json)?.let { return it }
+            }
+            // Tolinku answers in JSON with an "error", whatever the status. The
+            // host is ours and has said its piece; asking the API as well would
+            // count the click a second time.
+            if (json?.opt("error") is String) return null
+        }
+
+        // Step 2: no answer that was Tolinku's, which is what a tracking
+        // domain belonging to an email platform gives. Tolinku's own API can
+        // unwrap the link instead, asked with the key since it is the host this
+        // SDK was configured to trust. Not when the link is already on that
+        // host, where the first answer was the only one there is, and not
+        // without a key to ask with.
+        if (client.apiKey.isBlank()) return null
+        val apiHost = try {
+            URI(client.baseUrl.trim()).host
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        if (link.host == apiHost.lowercase()) return null
+
+        val second = try {
+            client.postOnce(
+                "/v1/api/links/resolve",
+                JSONObject().put("url", link.whole),
+                authenticated = true,
+            )
+        } catch (e: Exception) {
+            return null
+        }
+        if (second.code != 200) return null
+        return jsonOrNull(second.body)?.let { parse(it) }
+    }
+
+    /**
+     * A link in the one form both questions use.
+     *
+     * @property host the lowercased host, without a port
+     * @property origin https, the host, and a port only if it is not a default
+     * @property path the percent-encoded path, "/" when there is none
+     * @property whole the origin, path and query, without a fragment
+     */
+    internal class NormalisedLink(
+        val host: String,
+        val origin: String,
+        val path: String,
+        val whole: String,
+    )
+
+    /**
+     * The link trimmed, with its fragment dropped, its scheme and host
+     * lowercased, http upgraded to https and a default port dropped. The path
+     * and query are left exactly as written, encoding included. Null for
+     * anything that is not an http or https link.
+     */
+    internal fun normalise(url: String): NormalisedLink? {
         // java.net.URI rather than android.net.Uri: this is ordinary parsing
         // with no need for the framework, and the framework class is a stub in
         // unit tests, so using it would put this behaviour beyond the reach of
@@ -87,11 +169,16 @@ class Links internal constructor(private val client: TolinkuClient) {
         // app wants, and anything else is not a link this could answer for.
         val scheme = uri.scheme?.lowercase()
         if (scheme != "https" && scheme != "http") return null
-        val host = uri.host ?: return null
+        val host = uri.host?.lowercase() ?: return null
 
+        // Always https: every Tolinku and click tracking domain serves it, and
+        // Android's cleartext rules would block a plain http request anyway.
+        // Which makes :80 as much a default as :443.
         val origin = buildString {
-            append(scheme).append("://").append(host)
-            if (uri.port != -1) append(":").append(uri.port)
+            append("https://").append(host)
+            if (uri.port != -1 && uri.port != 443 && uri.port != 80) {
+                append(":").append(uri.port)
+            }
         }
 
         // The raw path, not the decoded one. A token may contain an encoded
@@ -100,33 +187,48 @@ class Links internal constructor(private val client: TolinkuClient) {
         // different route or to nothing.
         val path = uri.rawPath?.takeUnless { it.isEmpty() } ?: "/"
 
-        return try {
-            val response = client.postPublicToOrigin(
-                origin,
-                "/v1/api/path",
-                JSONObject().put("path", path),
-            )
-            val route = response.optJSONObject("route") ?: return null
+        // The whole link as well as the path. A link in an email arrives
+        // wrapped in the email platform's click tracking, and for some of them
+        // (SendGrid, for one) everything that says where it leads is in the
+        // query string, which the path alone would throw away. The fragment
+        // stays behind: a browser never sends it, so no server reads it.
+        val query = uri.rawQuery?.takeUnless { it.isEmpty() }
+        val whole = origin + path + (if (query != null) "?$query" else "")
 
-            // The answer went to a host taken from the URL this was given, so
-            // an app resolving a link from somewhere it does not control is
-            // talking to a stranger. The contract is a path: a full URL, or a
-            // protocol relative "//host" that reads as one, is a redirect
-            // waiting to happen in whatever the app does next.
-            val path = response.optString("deep_link_path")
-            if (!path.startsWith("/") || path.startsWith("//")) return null
-            ResolvedLink(
-                route = ResolvedRoute(
-                    prefix = route.optString("prefix"),
-                    name = route.optString("name"),
-                    template = route.optString("template"),
-                    linkType = route.optString("link_type").takeUnless { it.isEmpty() },
-                ),
-                token = response.optString("token", ""),
-                deepLinkPath = path,
-            )
-        } catch (e: Exception) {
-            null
-        }
+        return NormalisedLink(host = host, origin = origin, path = path, whole = whole)
+    }
+
+    private fun jsonOrNull(body: String): JSONObject? = try {
+        JSONObject(body)
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * The answer from either endpoint, or null if it is not one an app can
+     * safely route. Both answer in the same shape, and both get the same
+     * suspicion about what they say.
+     */
+    private fun parse(response: JSONObject): ResolvedLink? {
+        val route = response.optJSONObject("route") ?: return null
+
+        // The first answer went to a host taken from the URL this was given,
+        // so an app resolving a link from somewhere it does not control is
+        // talking to a stranger, and the second is checked the same way rather
+        // than trusted for coming from home. The contract is a path: a full
+        // URL, or a protocol relative "//host" that reads as one, is a redirect
+        // waiting to happen in whatever the app does next.
+        val path = response.optString("deep_link_path")
+        if (!path.startsWith("/") || path.startsWith("//")) return null
+        return ResolvedLink(
+            route = ResolvedRoute(
+                prefix = route.optString("prefix"),
+                name = route.optString("name"),
+                template = route.optString("template"),
+                linkType = route.optString("link_type").takeUnless { it.isEmpty() },
+            ),
+            token = response.optString("token", ""),
+            deepLinkPath = path,
+        )
     }
 }

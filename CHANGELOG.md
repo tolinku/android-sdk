@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.2
+
+### Fixed
+
+- In-app messages no longer crash apps on Android 7 (API 24 and 25). Showing,
+  closing or checking a message used `java.time`, which Android only has from
+  API 26; the SDK supports API 24, and the error it threw there was not caught.
+  The timing now uses plain epoch milliseconds.
+- "At least N hours between showings" counts hours. It used to store only the
+  day a message was shown, so the gap worked in whole days (a message shown at
+  11 pm could show again at 1 am). Times are now stored to the millisecond;
+  days stored by earlier versions are still read.
+
+### Changed
+
+- `Links.resolve` unwraps links from emails (SendGrid, Amazon SES, Braze,
+  Klaviyo, Iterable, Salesforce Marketing Cloud, Customer.io). It asks the
+  link's own host once, with a short time limit, and asks the Tolinku API only
+  when that host isn't Tolinku.
+
 ## 0.8.1
 
 ### Added

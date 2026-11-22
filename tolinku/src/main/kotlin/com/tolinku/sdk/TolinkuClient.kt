@@ -26,8 +26,13 @@ import kotlin.random.Random
  * (network errors, HTTP 429, and HTTP 5xx responses).
  */
 internal class TolinkuClient(
-    private val apiKey: String,
-    private val baseUrl: String
+    // Readable inside the module so Links can tell whether a link already
+    // lives on the API's own host, and whether there is a key to ask it with.
+    internal val apiKey: String,
+    internal val baseUrl: String,
+    // A parameter only so tests can put an interceptor in front of the
+    // network; the SDK itself always takes the default.
+    private val httpClient: OkHttpClient = defaultHttpClient()
 ) {
     companion object {
         /** Maximum number of retry attempts after the initial request. */
@@ -36,13 +41,18 @@ internal class TolinkuClient(
         const val BASE_DELAY_MS = 500L
         /** Maximum random jitter added to each retry delay, in milliseconds. */
         const val MAX_JITTER_MS = 250L
+        /** The whole time allowed for a [postOnce] request, start to finish. */
+        const val ONE_SHOT_TIMEOUT_MS = 5_000L
+
+        private fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build()
     }
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
-        .build()
+    /** A reply exactly as it came back, whatever its status. */
+    internal class RawReply(val code: Int, val body: String)
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
@@ -83,18 +93,66 @@ internal class TolinkuClient(
     }
 
     /**
-     * Perform an unauthenticated POST to a host other than the configured one.
+     * One POST, asked once, with [ONE_SHOT_TIMEOUT_MS] for the whole call.
+     *
+     * For questions where asking again does harm rather than good: resolving a
+     * link counts a click, so a retry after a slow reply can count it twice,
+     * and the person who tapped the link is waiting on the answer. No retry
+     * loop, and OkHttp's own silent retry on a failed connection is off too.
+     *
+     * Returns any status as it came back, so the caller can tell a reply from
+     * Tolinku apart from anything else. Throws IOException when there is no
+     * reply at all (no network, refused, timed out).
      *
      * A few public endpoints work out which Appspace they belong to from the
-     * hostname the request arrives on rather than from a key or an id, so a
-     * question about a link on a customer's own domain has to be asked on that
-     * domain. Everything else is unchanged: same timeouts, same retries.
+     * hostname the request arrives on rather than from a key, so a question
+     * about a link on a customer's own domain is asked on that domain: pass it
+     * as [origin].
+     *
+     * @param origin the scheme, host and port to ask, or null for the configured API
      */
-    suspend fun postPublicToOrigin(origin: String, path: String, body: JSONObject): JSONObject {
-        return executeWithRetry {
-            request(path, method = "POST", body = body, authenticated = false, origin = origin)
+    suspend fun postOnce(
+        path: String,
+        body: JSONObject,
+        authenticated: Boolean,
+        origin: String? = null
+    ): RawReply {
+        val request = buildRequest(path, "POST", body, null, authenticated, origin)
+        return suspendCancellableCoroutine { continuation ->
+            val call = oneShotClient().newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (Tolinku.debug) {
+                        Log.e(Tolinku.TAG, "Network error: ${e.message}", e)
+                    }
+                    continuation.resumeWithException(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val reply = response.use { RawReply(it.code, it.body.string()) }
+                        if (Tolinku.debug) {
+                            Log.d(Tolinku.TAG, "Response ${reply.code}: ${reply.body}")
+                        }
+                        continuation.resume(reply)
+                    } catch (e: IOException) {
+                        // The body failed partway, the timeout included.
+                        continuation.resumeWithException(e)
+                    }
+                }
+            })
         }
     }
+
+    /**
+     * The client [postOnce] uses: the shared one, sharing its connections and
+     * threads, with a limit on the whole call and no retry of its own.
+     */
+    internal fun oneShotClient(): OkHttpClient = httpClient.newBuilder()
+        .callTimeout(ONE_SHOT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        .retryOnConnectionFailure(false)
+        .build()
 
     /**
      * Execute a request block with retry logic. Retries on:
@@ -169,14 +227,14 @@ internal class TolinkuClient(
         throw lastException ?: TolinkuException("Request failed after retries")
     }
 
-    private suspend fun request(
+    private fun buildRequest(
         path: String,
         method: String,
-        body: JSONObject? = null,
-        queryParams: Map<String, String>? = null,
-        authenticated: Boolean = true,
-        origin: String? = null
-    ): JSONObject {
+        body: JSONObject?,
+        queryParams: Map<String, String>?,
+        authenticated: Boolean,
+        origin: String?
+    ): Request {
         val urlBuilder = StringBuilder((origin ?: baseUrl).trimEnd('/'))
             .append(path)
 
@@ -213,6 +271,19 @@ internal class TolinkuClient(
         if (Tolinku.debug) {
             Log.d(Tolinku.TAG, "$method $urlBuilder")
         }
+
+        return request
+    }
+
+    private suspend fun request(
+        path: String,
+        method: String,
+        body: JSONObject? = null,
+        queryParams: Map<String, String>? = null,
+        authenticated: Boolean = true,
+        origin: String? = null
+    ): JSONObject {
+        val request = buildRequest(path, method, body, queryParams, authenticated, origin)
 
         return suspendCancellableCoroutine { continuation ->
             val call = httpClient.newCall(request)
