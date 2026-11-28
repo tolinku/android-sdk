@@ -18,7 +18,7 @@ Add the dependency to your module-level `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.tolinku:sdk:0.8.2")
+    implementation("com.tolinku:sdk:0.8.3")
 }
 ```
 
@@ -174,6 +174,9 @@ Display server-configured messages as modal overlays. Create and manage messages
 // Show the highest-priority message matching a trigger
 Tolinku.messages.show(context = this, trigger = "milestone")
 
+// Only messages for one event or milestone (plus those that name none)
+Tolinku.messages.show(context = this, trigger = "event", triggerValue = "purchase")
+
 // With action and dismiss callbacks
 Tolinku.messages.show(
     context = this,
@@ -295,9 +298,10 @@ Tolinku.shutdown()
 
 | Method | Description |
 |--------|-------------|
-| `fetch(trigger?)` | Fetch messages with optional trigger filter |
+| `fetch(trigger?, triggerValue?)` | Fetch messages with optional trigger and event or milestone name |
 | `renderToken(messageId)` | Get a render token for a message |
 | `show(context, trigger?, onAction?, onDismiss?)` | Show the highest-priority message |
+| `show(context, trigger?, triggerValue, onAction?, onDismiss?)` | The same, for one event or milestone name |
 
 ## Documentation
 

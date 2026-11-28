@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.3
+
+### Added
+
+- `triggerValue` for in-app messages, to ask for the messages of one event or
+  milestone: `show(context, "event", "purchase")`, `showAsync(...)`,
+  `fetch(trigger, triggerValue)` and `fetchAsync(trigger, triggerValue, callback)`.
+  It is sent as `trigger_value`, and the SDK also filters by it, so a server
+  older than that parameter gives the same answer: messages for that name, plus
+  messages of the trigger that name none.
+
+  New overloads rather than a default argument on the existing functions, so
+  existing calls (a trailing `onDismiss` lambda included) and apps that don't
+  recompile keep working. On `show` and `showAsync` the name is not nullable,
+  so `show(context, trigger, null)` still means no `onAction`; to ask for no
+  name, call them as before.
+
+### Fixed
+
+- The close mark is visible on any message. It was a white X over the message
+  itself, and a message is white unless the author picks a colour, so on most
+  messages it couldn't be seen. It is now a white X on a dark disc, with a 48dp
+  tap area.
+- A message with "After closing, hide for" left empty no longer stays hidden
+  forever after one close. With no number the close isn't remembered and the
+  message can show again the next time the app asks; a number hides it for that
+  many days. This is what the web SDK and the docs already did.
+
 ## 0.8.2
 
 ### Fixed

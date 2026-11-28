@@ -22,12 +22,15 @@ internal object MessageTiming {
     private const val HOUR_MS = 3_600_000L
 
     /**
-     * Whether a dismissal still hides the message. A message without dismissDays stays hidden
-     * once dismissed (unchanged behaviour); a dismissal with no readable time hides nothing.
+     * Whether a dismissal still hides the message. "After closing, hide for" is dismissDays: left
+     * empty (null) or 0, a close isn't remembered and the message can show again the next time
+     * the app asks; a number hides it for that many days. The web SDK and the docs have always
+     * worked this way; earlier versions of this SDK hid a message with no dismissDays forever.
+     * A dismissal with no readable time hides nothing.
      */
     fun stillDismissed(dismissedAtMs: Long?, dismissDays: Int?, nowMs: Long): Boolean {
         if (dismissedAtMs == null) return false
-        if (dismissDays == null) return true
+        if (dismissDays == null || dismissDays <= 0) return false
         return nowMs - dismissedAtMs < dismissDays * DAY_MS
     }
 

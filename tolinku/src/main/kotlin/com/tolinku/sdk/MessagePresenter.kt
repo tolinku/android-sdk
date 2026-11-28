@@ -111,19 +111,16 @@ object TolinkuMessagePresenter {
 
             container.addView(webView, webViewParams)
 
-            // Native close button (X) overlaid on top-right
+            // Native close button (X) overlaid on top-right. A white X on a dark disc, because it
+            // sits over the message itself and a message can be any colour: the plain white X it
+            // used to be vanished on a white message, which is the default. The button is 48dp,
+            // the minimum tap target Android recommends; the disc drawn inside it is 32dp.
             val closeButton = ImageButton(context).apply {
-                setBackgroundColor(Color.TRANSPARENT)
-                setColorFilter(Color.WHITE)
+                background = closeButtonBackground(context)
                 contentDescription = "Close"
-                setPadding(
-                    dpToPx(context, 10),
-                    dpToPx(context, 10),
-                    dpToPx(context, 10),
-                    dpToPx(context, 10)
-                )
-
-                // Draw a simple X using a text-based approach
+                val padding = dpToPx(context, 14)
+                setPadding(padding, padding, padding, padding)
+                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
                 setImageDrawable(CloseIconDrawable(Color.WHITE))
 
                 setOnClickListener {
@@ -134,11 +131,11 @@ object TolinkuMessagePresenter {
             }
 
             val closeParams = FrameLayout.LayoutParams(
-                dpToPx(context, 44),
-                dpToPx(context, 44)
+                dpToPx(context, 48),
+                dpToPx(context, 48)
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
-                val margin = dpToPx(context, 8)
+                val margin = dpToPx(context, 6)
                 setMargins(0, margin, margin, 0)
             }
 
@@ -257,6 +254,18 @@ object TolinkuMessagePresenter {
             mainHandler.post(block)
         }
     }
+
+    /** A 32dp disc of black at 45%, centred in the 48dp close button. */
+    private fun closeButtonBackground(context: Context): android.graphics.drawable.Drawable {
+        val disc = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(CLOSE_DISC_COLOR)
+        }
+        return android.graphics.drawable.InsetDrawable(disc, dpToPx(context, 8))
+    }
+
+    /** Black at 45% opacity, behind the white X. */
+    internal const val CLOSE_DISC_COLOR = 0x73000000
 
     private fun dpToPx(context: Context, dp: Int): Int {
         return TypedValue.applyDimension(
@@ -405,6 +414,9 @@ internal class CloseIconDrawable(private val color: Int) : android.graphics.draw
 
     override fun draw(canvas: android.graphics.Canvas) {
         val bounds = bounds
+        // The stroke follows the size it is drawn at, so the X keeps its weight on every screen
+        // density rather than being six pixels whatever the density.
+        paint.strokeWidth = bounds.width() * 0.12f
         val padding = (bounds.width() * 0.25f)
         val left = bounds.left + padding
         val top = bounds.top + padding

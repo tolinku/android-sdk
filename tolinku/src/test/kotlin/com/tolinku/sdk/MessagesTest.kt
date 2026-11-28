@@ -210,4 +210,63 @@ class MessagesTest {
             assertEquals(500, e.statusCode)
         }
     }
+
+    // -----------------------------------------------------------------------
+    // trigger_value
+    // -----------------------------------------------------------------------
+
+    private fun eventMessage(id: String, triggerValue: String?): String {
+        val value = if (triggerValue == null) "null" else "\"$triggerValue\""
+        return """{"id":"$id","name":"$id","title":"T","trigger":"event","trigger_value":$value,"priority":1}"""
+    }
+
+    @Test
+    fun `fetch with triggerValue sends trigger_value`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"messages":[]}"""))
+
+        messages.fetch(trigger = "event", triggerValue = "purchase")
+
+        val url = server.takeRequest().requestUrl!!
+        assertEquals("event", url.queryParameter("trigger"))
+        assertEquals("purchase", url.queryParameter("trigger_value"))
+    }
+
+    @Test
+    fun `fetch without triggerValue sends no trigger_value`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"messages":[]}"""))
+
+        messages.fetch(trigger = "event")
+
+        val url = server.takeRequest().requestUrl!!
+        assertEquals(null, url.queryParameter("trigger_value"))
+    }
+
+    @Test
+    fun `fetch with triggerValue filters what an older server returns`() = runTest {
+        // An older server ignores trigger_value and returns every message of the trigger.
+        val body = listOf(
+            eventMessage("purchase", "purchase"),
+            eventMessage("signup", "signup"),
+            eventMessage("any", null),
+            eventMessage("empty", ""),
+        ).joinToString(",", """{"messages":[""", "]}")
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+
+        val ids = messages.fetch("event", "purchase").map { it.id }
+
+        assertEquals(listOf("purchase", "any", "empty"), ids)
+    }
+
+    @Test
+    fun `fetch without triggerValue filters nothing`() = runTest {
+        val body = listOf(
+            eventMessage("purchase", "purchase"),
+            eventMessage("signup", "signup"),
+        ).joinToString(",", """{"messages":[""", "]}")
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+
+        val ids = messages.fetch("event").map { it.id }
+
+        assertEquals(listOf("purchase", "signup"), ids)
+    }
 }

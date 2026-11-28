@@ -19,8 +19,16 @@ class MessageTimingTest {
     }
 
     @Test
-    fun withoutDismissDaysADismissalLastsAsBefore() {
-        assertTrue(MessageTiming.stillDismissed(now - 400 * day, null, now))
+    fun withoutDismissDaysACloseIsNotRemembered() {
+        // "After closing, hide for" left empty: the web SDK and the docs never remember the
+        // close, and this SDK used to hide the message forever.
+        assertFalse(MessageTiming.stillDismissed(now, null, now))
+        assertFalse(MessageTiming.stillDismissed(now - 400 * day, null, now))
+    }
+
+    @Test
+    fun zeroDismissDaysDoesNotRememberTheClose() {
+        assertFalse(MessageTiming.stillDismissed(now, 0, now))
     }
 
     @Test

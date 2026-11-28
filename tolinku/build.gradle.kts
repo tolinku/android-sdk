@@ -7,7 +7,7 @@ plugins {
     id("signing")
 }
 
-val sdkVersion = "0.8.2"
+val sdkVersion = "0.8.3"
 
 android {
     namespace = "com.tolinku.sdk"
