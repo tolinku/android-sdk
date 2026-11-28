@@ -251,10 +251,12 @@ class LinksTest {
 
     // Tolinku's own reply ends it
 
+    private fun marked(reply: MockResponse) = reply.setHeader("X-Tolinku", "1")
+
     private fun assertNoFallbackAfter(reply: MockResponse) = runTest {
-        // The host is Tolinku's and has answered. Asking the API as well would
-        // count the click twice.
-        server.enqueue(reply)
+        // The host is Tolinku's (it says so with X-Tolinku: 1) and has
+        // answered. Asking the API as well would only repeat the question.
+        server.enqueue(marked(reply))
 
         assertNull(links.resolve("https://links.example.com/s7k2p9q/4821"))
         assertEquals(listOf(step1), asked)
@@ -275,6 +277,25 @@ class LinksTest {
     @Test
     fun `stops at a Tolinku error with any other status`() = assertNoFallbackAfter(
         MockResponse().setResponseCode(500).setBody("""{"error":"Internal error"}""")
+    )
+
+    @Test
+    fun `stops at a marked reply even without an error field`() = assertNoFallbackAfter(
+        MockResponse().setResponseCode(404).setBody("""{"message":"no"}""")
+    )
+
+    @Test
+    fun `a server without the header is trusted by its error body on Tolinku own domain`() = runTest {
+        // The API here is localhost, so a link on localhost is on Tolinku's own domain.
+        server.enqueue(MockResponse().setResponseCode(404).setBody("""{"error":"Route not found"}"""))
+        assertNull(links.resolve("https://localhost/s7k2p9q/4821"))
+        assertEquals(listOf("https://localhost/v1/api/path"), asked)
+        assertEquals(0, api.requestCount)
+    }
+
+    @Test
+    fun `an email platform JSON error without the header does not stop the unwrap`() = assertFallsBackAfter(
+        MockResponse().setResponseCode(404).setBody("""{"error":"Link not found"}""")
     )
 
     // Anything else asks the API

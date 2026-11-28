@@ -72,8 +72,10 @@ class Links internal constructor(private val client: TolinkuClient) {
      * answers nothing.
      *
      * Each question is asked once, with [TolinkuClient.ONE_SHOT_TIMEOUT_MS] to
-     * answer. Resolving a link counts a click, so asking again would count it
-     * twice, and someone is waiting on the answer with the app half open.
+     * answer. The server unwraps an email link once, which is how the email
+     * platform counts the click (Tolinku records no click of its own), so asking
+     * again could count it twice, and someone is waiting on the answer with the
+     * app half open.
      *
      * Never throws. A link that cannot be resolved, for a bad network or any
      * other reason, is one the app should fall back to its own handling for,
@@ -100,10 +102,13 @@ class Links internal constructor(private val client: TolinkuClient) {
             if (reply.code == 200 && json != null) {
                 parse(json)?.let { return it }
             }
-            // Tolinku answers in JSON with an "error", whatever the status. The
-            // host is ours and has said its piece; asking the API as well would
-            // count the click a second time.
-            if (json?.opt("error") is String) return null
+            // Tolinku answers with X-Tolinku: 1, whatever the status, and the
+            // host has then said its piece; asking the API as well would only
+            // repeat the question. An email platform's host can answer in JSON
+            // with an "error" too, so the body alone proves nothing. A server
+            // from before the header sends none: its error body is trusted only
+            // on Tolinku's own domain.
+            if (reply.tolinku || (json?.opt("error") is String && isTolinkuDomain(link.host))) return null
         }
 
         // Step 2: no answer that was Tolinku's, which is what a tracking
@@ -131,6 +136,21 @@ class Links internal constructor(private val client: TolinkuClient) {
         }
         if (second.code != 200) return null
         return jsonOrNull(second.body)?.let { parse(it) }
+    }
+
+    /**
+     * Whether [host] is Tolinku's own: the configured API's host, or a host
+     * under its parent domain (an Appspace's tolinku.com subdomain).
+     */
+    private fun isTolinkuDomain(host: String): Boolean {
+        val apiHost = try {
+            URI(client.baseUrl.trim()).host?.lowercase()
+        } catch (e: Exception) {
+            null
+        } ?: return false
+        if (host == apiHost) return true
+        val labels = apiHost.split(".")
+        return labels.size > 2 && host.endsWith("." + labels.takeLast(2).joinToString("."))
     }
 
     /**

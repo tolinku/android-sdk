@@ -51,8 +51,12 @@ internal class TolinkuClient(
             .build()
     }
 
-    /** A reply exactly as it came back, whatever its status. */
-    internal class RawReply(val code: Int, val body: String)
+    /**
+     * A reply exactly as it came back, whatever its status. [tolinku] is
+     * whether it carried `X-Tolinku: 1`, which Tolinku puts on every answer of
+     * its API and no other host does.
+     */
+    internal class RawReply(val code: Int, val body: String, val tolinku: Boolean = false)
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
@@ -95,9 +99,11 @@ internal class TolinkuClient(
     /**
      * One POST, asked once, with [ONE_SHOT_TIMEOUT_MS] for the whole call.
      *
-     * For questions where asking again does harm rather than good: resolving a
-     * link counts a click, so a retry after a slow reply can count it twice,
-     * and the person who tapped the link is waiting on the answer. No retry
+     * For questions where asking again does harm rather than good: resolving an
+     * email link makes the server request the email platform's tracked link
+     * once, which is how that platform counts the click (Tolinku records no
+     * click of its own), so a retry after a slow reply can count it twice, and
+     * the person who tapped the link is waiting on the answer. No retry
      * loop, and OkHttp's own silent retry on a failed connection is off too.
      *
      * Returns any status as it came back, so the caller can tell a reply from
@@ -131,7 +137,7 @@ internal class TolinkuClient(
 
                 override fun onResponse(call: Call, response: Response) {
                     try {
-                        val reply = response.use { RawReply(it.code, it.body.string()) }
+                        val reply = response.use { RawReply(it.code, it.body.string(), it.header("X-Tolinku") == "1") }
                         if (Tolinku.debug) {
                             Log.d(Tolinku.TAG, "Response ${reply.code}: ${reply.body}")
                         }
